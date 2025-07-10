@@ -4,3 +4,4 @@ plotly
 numpy
 requests
 streamlit-lottie
+scikit-learn
