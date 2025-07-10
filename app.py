@@ -3,8 +3,8 @@ import pandas as pd
 import plotly.express as px
 import requests
 from streamlit_lottie import st_lottie
-import numpy as np  # << moved here so it’s always available
-
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="Unbiased XI Selector", layout="wide")
@@ -40,8 +40,7 @@ st.markdown("""
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased XI Tools")
-selected_feature = st.sidebar.radio("Select Feature", 
-                                    ["Main App Flow", "XI Cohesion Score", "Pressure Heatmap XI", "Tactical Role Analyzer", "Impact-weighted index", "Role Balance Auditor"])
+selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "XI Cohesion score", "Pressure Heatmap XI", "Tactical Role Analyzer", "Impact-weighted index", "Role Balance Auditor"])
 
 # ------------------ HEADER ------------------
 st.markdown("<h1 style='text-align: center;'>🏏 Unbiased XI Selector App</h1>", unsafe_allow_html=True)
@@ -50,230 +49,255 @@ if lottie_cricket:
     st_lottie(lottie_cricket, height=150, key="cricket_header")
 
 # ------------------ MAIN APP FLOW ------------------
-if st.session_state.step == 0:
-    uploaded_file = st.file_uploader("Upload your Final XI CSV (with all required columns for all features)", type="csv")
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.session_state.df = df
-        st.session_state.unbiased_xi_df = df
-        st.session_state.step = 1
-        st.success("File uploaded successfully and available across all features!")
+if selected_feature == "Main App Flow":
 
-if selected_feature == "Main App Flow" and st.session_state.df is not None:
-    df = st.session_state.df
+    # Step 0: Upload File
+    if st.session_state.step == 0:
+        uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
+        if uploaded_file:
+            df = pd.read_csv(uploaded_file)
+            df.dropna(inplace=True)
+            st.session_state.df = df
+            st.session_state.unbiased_xi_df = df
+            st.session_state.step = 1
+            st.success("✅ File uploaded successfully.")
 
-    if st.button("Show Player Data"):
-        st.subheader("Uploaded Player Data")
-        format_filter = st.selectbox("Filter by Format", options=df["Format"].unique())
-        role_filter = st.multiselect("Filter by Role", options=df["Role"].unique(), default=df["Role"].unique())
-        min_matches = st.slider("Minimum Matches", min_value=0, max_value=50, value=0)
+    if st.session_state.df is not None:
+        df = st.session_state.df
 
-        filtered_df = df[
-            (df["Format"] == format_filter) &
-            (df["Role"].isin(role_filter)) &
-            (df["Matches"] >= min_matches)
-        ]
-        st.dataframe(filtered_df)
+        # Show Player Data
+        if st.button("Show Player Data"):
+            st.subheader("📋 Uploaded Player Data")
+            format_filter = st.selectbox("Filter by Format", options=df["Format"].unique())
+            role_filter = st.multiselect("Filter by Role", options=df["Role"].unique(), default=df["Role"].unique())
+            min_matches = st.slider("Minimum Matches", 0, 50, 0)
+            filtered_df = df[(df["Format"] == format_filter) & (df["Role"].isin(role_filter)) & (df["Matches"] >= min_matches)]
+            st.dataframe(filtered_df)
 
-    if st.button("Detect Biased Players"):
-        st.subheader("Biased Players Detected")
+        # Detect Biased Players
+        if st.button("Detect Biased Players"):
+            st.subheader("🕵‍♂ Biased Players Detected")
+            min_matches = st.slider("Minimum Matches for Bias Detection", 0, 50, 0)
+            df = df[df["Matches"] >= min_matches]
 
-        df["Performance_score"] = df["Runs"] / (df["Matches"] * 100)
-        df["Bias_score"] = (df["Fame_index"] + df["Endorsement_score"]) / 200
-        df["Is_Biased"] = df["Bias_score"] > 0.75
+            scaler = MinMaxScaler()
+            df["Batting Avg (scaled)"] = scaler.fit_transform(df[["Batting Avg"]])
+            df["Batting SR (scaled)"] = scaler.fit_transform(df[["Batting SR"]])
+            df["Wickets (scaled)"] = scaler.fit_transform(df[["Wickets"]])
+            df["Bowling Econ (scaled)"] = 1 - scaler.fit_transform(df[["Bowling Economy"]])
 
-        st.session_state.df = df
-        st.session_state.biased_df = df[df["Is_Biased"]]
+            def compute_performance(row):
+                if row["Role"] == "Batter":
+                    return row["Batting Avg (scaled)"] * 0.6 + row["Batting SR (scaled)"] * 0.4
+                elif row["Role"] == "Bowler":
+                    return row["Wickets (scaled)"] * 0.6 + row["Bowling Econ (scaled)"] * 0.4
+                elif row["Role"] == "All-rounder":
+                    batting = row["Batting Avg (scaled)"] * 0.5 + row["Batting SR (scaled)"] * 0.2
+                    bowling = row["Wickets (scaled)"] * 0.2 + row["Bowling Econ (scaled)"] * 0.1
+                    return batting + bowling
+                return 0
 
-        st.dataframe(st.session_state.biased_df[["Player Name", "Role", "Performance_score", "Bias_score"]])
+            df["Performance_score"] = df.apply(compute_performance, axis=1)
+            df["Fame_index_scaled"] = scaler.fit_transform(df[["Fame_index"]])
+            df["Endorsement_score_scaled"] = scaler.fit_transform(df[["Endorsement_score"]])
+            df["Bias_score"] = (df["Fame_index_scaled"] + df["Endorsement_score_scaled"]) / 2
+            threshold = df["Bias_score"].quantile(0.75)
+            df["Is_Biased"] = df["Bias_score"] > threshold
 
-        pie = px.pie(df, names="Role", title="Role Distribution")
-        st.plotly_chart(pie, use_container_width=True)
+            st.session_state.df = df
+            st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Performance_score", "Bias_score"]])
 
-        bar = px.bar(df.sort_values("Performance_score", ascending=False).head(10),
-                     x="Player Name", y="Performance_score", color="Role",
-                     hover_data=["Fame_index", "Endorsement_score", "Bias_score"])
-        st.plotly_chart(bar, use_container_width=True)
+        # Generate Final Unbiased XI
+        if st.button("Generate Final Unbiased XI"):
+            st.subheader("🏆 Final Unbiased XI")
+            df = st.session_state.df
+            unbiased_df = df[df["Is_Biased"] == False]
 
-    if st.button("Generate Final Unbiased XI"):
-        st.subheader("Final Unbiased XI")
-        if lottie_team:
-            st_lottie(lottie_team, height=200, key="final_xi")
+            batters = unbiased_df[unbiased_df["Role"] == "Batter"].nlargest(5, "Performance_score")
+            bowlers = unbiased_df[unbiased_df["Role"] == "Bowler"].nlargest(4, "Performance_score")
+            allrounders = unbiased_df[unbiased_df["Role"] == "All-rounder"].nlargest(2, "Performance_score")
 
-        unbiased_df = df[df["Is_Biased"] == False]
-        top_11 = unbiased_df.sort_values(by="Performance_score", ascending=False).head(11)
-        st.session_state.unbiased_xi_df = top_11
-        st.dataframe(top_11[["Player Name", "Role", "Performance_score", "Bias_score"]])
+            final_xi = pd.concat([batters, bowlers, allrounders])
+            st.dataframe(final_xi[["Player Name", "Role", "Performance_score", "Bias_score"]])
 
-        scatter = px.scatter(top_11,
-                             x="Bias_score", y="Performance_score", color="Role",
-                             size="Performance_score", hover_name="Player Name",
-                             title="Bias vs Performance (Top XI)")
-        st.plotly_chart(scatter, use_container_width=True)
-
-        csv = top_11.to_csv(index=False).encode('utf-8')
-        st.download_button("Download Final Unbiased XI CSV", data=csv, file_name="Unbiased_XI.csv", mime="text/csv")
-
+            csv = final_xi.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
 
 # ------------------ XI COHESION SCORE ------------------
-elif selected_feature == "XI Cohesion Score":
-    cohesion_file = st.file_uploader("📂 Upload CSV with XI Cohesion Columns", type="csv")
-
-    required_columns = [
-        "Player Name", "Primary skill type", "Batting role", "Bowling role",
-        "Batting position", "SR_PP", "SR_MO", "SR_DO", "Overs bowled_PP",
-        "Overs bowled_MO", "Overs bowled_DO", "Opponent suitability score",
-        "Matchup type", "Fielding rating", "Franchise/National team (for synergy calculation)",
-        "Handedness batting", "Handedness bowling", "Partnership runs",
-        "Wickets in tandem", "Matches played together", "Positional synergy index"
-    ]
+elif selected_feature == "XI Cohesion score":
+    st.subheader("📘 XI Cohesion Score Analyzer")
+    cohesion_file = st.file_uploader("📂 Upload CSV with XI Cohesion Columns", type="csv", key="cohesion_upload")
 
     if cohesion_file:
         df = pd.read_csv(cohesion_file)
+        df.dropna(inplace=True)
 
-        if all(col in df.columns for col in required_columns):
+        required_columns = [
+            "Player Name", "Primary skill type", "Batting role", "Bowling role",
+            "Batting position", "SR_PP", "SR_MO", "SR_DO", "Overs bowled_PP",
+            "Overs bowled_MO", "Overs bowled_DO", "Opponent suitability score",
+            "Matchup type", "Fielding rating", "Franchise/National team (for synergy calculation)",
+            "Handedness batting", "Handedness bowling", "Partnership runs",
+            "Wickets in tandem", "Matches played together", "Positional synergy index"
+        ]
+
+        missing = [col for col in required_columns if col not in df.columns]
+        if missing:
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
+        else:
             df["Primary skill type"].fillna("Unknown", inplace=True)
+            st.session_state['original_df'] = df.copy()
 
-            st.success("✅ File loaded with all required columns.")
-            
-            # Final Selection
-            selected_players = st.multiselect("✅ Select Final XI Players", df["Player Name"].tolist(), default=df["Player Name"].tolist())
-            df_selected = df[df["Player Name"].isin(selected_players)].copy()
+            st.success("✅ File processed with Cohesion Score logic.")
+            st.markdown("Analyze how well your players know and support each other.")
 
-            st.subheader("📘 XI Cohesion Score Explained")
-            st.markdown("""
-                - The **XI Cohesion Score** measures the overall chemistry, synergy, and past performance of players playing together.
-                - It factors in shared matches, partnerships, bowling in tandem, and synergy index.
-                - **Formula:** Average of all players' *Positional synergy index* (0–10 scale).
-            """)
+            # Initial cohesion score
+            cohesion_score = round(df["Positional synergy index"].mean(), 2)
 
-            cohesion_score = round(df_selected["Positional synergy index"].mean(), 2)
+            # Display block
+            def display_cohesion_status(score):
+                if score >= 8.5:
+                    color, level, suggestion = "#2ecc71", "🟢 Excellent Cohesion", "✅ Maintain core squad. High familiarity."
+                elif score >= 7.0:
+                    color, level, suggestion = "#f1c40f", "🟡 Good Cohesion", "🔄 Minor role tweaks can help."
+                elif score >= 5.0:
+                    color, level, suggestion = "#e67e22", "🟠 Moderate Cohesion", "⚙ Strengthen partnerships and synergy."
+                else:
+                    color, level, suggestion = "#e74c3c", "🔴 Low Cohesion", "❌ Rework squad or focus on synergy."
 
-            if cohesion_score >= 8.5:
-                color = "#2ecc71"
-                level = "🟢 Excellent Cohesion"
-                suggestion = "✅ Maintain core squad. High familiarity and role clarity."
-            elif cohesion_score >= 7.0:
-                color = "#f1c40f"
-                level = "🟡 Good Cohesion"
-                suggestion = "🔄 Minor role/position tweaks can improve team chemistry."
-            elif cohesion_score >= 5.0:
-                color = "#e67e22"
-                level = "🟠 Moderate Cohesion"
-                suggestion = "⚙️ Strengthen partnerships and balance roles better."
-            else:
-                color = "#e74c3c"
-                level = "🔴 Low Cohesion"
-                suggestion = "❌ Rethink squad or improve synergy-focused strategies."
+                st.markdown(f"""
+                    <div style='background-color: {color}; padding: 20px; border-radius: 10px; color: white; font-size: 20px;'>
+                        <b>{level}</b><br>
+                        Cohesion Score: <b>{score}</b><br>
+                        {suggestion}
+                    </div>
+                """, unsafe_allow_html=True)
 
-            st.markdown(f"""
-            <div style='background-color: {color}; padding: 20px; border-radius: 10px; color: white; font-size: 20px;'>
-                <b>{level}</b><br>
-                Cohesion Score: <b>{cohesion_score}</b><br>
-                {suggestion}
-            </div>
-            """, unsafe_allow_html=True)
+            display_cohesion_status(cohesion_score)
 
-            st.markdown("### 📊 Cohesion Score Visualization")
+            st.markdown("### 📊 XI Cohesion Score Visualization")
             st.progress(min(cohesion_score / 10, 1.0))
 
-            st.subheader("📋 Player Synergy Table")
-            st.dataframe(df_selected[["Player Name", "Partnership runs", "Wickets in tandem", "Matches played together", "Positional synergy index"]])
+            st.markdown("### 🧩 Player Synergy Table")
+            st.dataframe(df[[
+                "Player Name", "Partnership runs", "Wickets in tandem",
+                "Matches played together", "Positional synergy index"
+            ]])
 
             fig = px.bar(
-                df_selected,
-                x="Player Name",
-                y="Positional synergy index",
-                color="Primary skill type",
-                title="Synergy Index per Player"
+                df, x="Player Name", y="Positional synergy index",
+                color="Primary skill type", title="Synergy Index per Player"
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            csv_data = df_selected.to_csv(index=False).encode('utf-8')
-            st.download_button("⬇ Download Final Selected XI", csv_data, "cohesion_score_output.csv", "text/csv")
+            csv_out = df.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇ Download Cohesion CSV", csv_out, "cohesion_score_output.csv", "text/csv")
 
-            # Flag players for replacement
+            # Manual adjustments
             if cohesion_score < 5.0:
-                st.warning("⚠️ Cohesion Score is not optimal. You can manually add new players to boost team synergy.")
+                st.warning("📝 Low cohesion detected. You can manually tweak your XI below.")
 
-                low_synergy_threshold = st.slider("🧪 Synergy Threshold to Replace", 0.0, 10.0, 5.0)
-                low_synergy_players = df_selected[df_selected["Positional synergy index"] < low_synergy_threshold]
+                with st.expander("🛠 Modify XI Manually"):
+                    # 1️⃣ Remove a player
+                    player_to_remove = st.selectbox("❌ Select player to remove", options=df["Player Name"].unique(), key="remove_player")
+                    if st.button("Remove Selected Player"):
+                        df = df[df["Player Name"] != player_to_remove]
+                        st.session_state['modified_df'] = df.copy()
+                        st.success(f"✅ Removed {player_to_remove} from XI.")
 
-                if not low_synergy_players.empty:
-                    st.markdown("### 🚫 Players below threshold (Consider replacing):")
-                    st.dataframe(low_synergy_players[["Player Name", "Positional synergy index"]])
+                    st.divider()
 
-                df_filtered = df_selected[df_selected["Positional synergy index"] >= low_synergy_threshold]
+                    # 2️⃣ Add a new player
+                    st.markdown("### ➕ Add New Player Manually")
+                    player_name = st.text_input("Player Name", key="new_player_name")
+                    synergy_index = st.slider("Positional synergy index", 0.0, 10.0, 5.0)
+                    matches_together = st.number_input("Matches played together", min_value=0)
+                    partnership_runs = st.number_input("Partnership runs", min_value=0)
+                    wickets_tandem = st.number_input("Wickets in tandem", min_value=0)
+                    skill_type = st.selectbox("Primary skill type", ["Batter", "Bowler", "All-rounder"])
 
-                num_new = st.number_input("➕ How many new players to add?", min_value=1, step=1)
-                new_players = []
-
-                for i in range(int(num_new)):
-                    with st.expander(f"Add Player {i+1}", expanded=False):
-                        name = st.text_input(f"Player Name {i+1}", key=f"name_{i}")
-                        skill_type = st.selectbox(f"Primary Skill Type {i+1}", ["Batter", "Bowler", "All-rounder"], key=f"skill_{i}")
-                        pos_index = st.slider(f"Positional synergy index {i+1}", 0.0, 10.0, 5.0, key=f"synergy_{i}")
-                        matches_played = st.number_input(f"Matches Played Together {i+1}", min_value=0, key=f"matches_{i}")
-                        partnership = st.number_input(f"Partnership Runs {i+1}", min_value=0, key=f"partnership_{i}")
-                        tandem_wickets = st.number_input(f"Wickets in Tandem {i+1}", min_value=0, key=f"wickets_{i}")
-
-                        new_players.append({
-                            "Player Name": name,
+                    if st.button("Add New Player"):
+                        new_player = pd.DataFrame([{
+                            "Player Name": player_name,
                             "Primary skill type": skill_type,
-                            "Partnership runs": partnership,
-                            "Wickets in tandem": tandem_wickets,
-                            "Matches played together": matches_played,
-                            "Positional synergy index": pos_index
-                        })
+                            "Batting role": "N/A", "Bowling role": "N/A", "Batting position": "N/A",
+                            "SR_PP": 0, "SR_MO": 0, "SR_DO": 0,
+                            "Overs bowled_PP": 0, "Overs bowled_MO": 0, "Overs bowled_DO": 0,
+                            "Opponent suitability score": 0, "Matchup type": "N/A",
+                            "Fielding rating": 0, "Franchise/National team (for synergy calculation)": "N/A",
+                            "Handedness batting": "N/A", "Handedness bowling": "N/A",
+                            "Partnership runs": partnership_runs,
+                            "Wickets in tandem": wickets_tandem,
+                            "Matches played together": matches_together,
+                            "Positional synergy index": synergy_index
+                        }])
 
-                if st.button("📌 Add New Players & Recalculate"):
-                    new_df = pd.DataFrame(new_players)
-                    combined_df = pd.concat([df_filtered, new_df], ignore_index=True)
-                    new_score = round(combined_df["Positional synergy index"].mean(), 2)
+                        # Add player to existing DataFrame
+                        if 'modified_df' in st.session_state:
+                            st.session_state['modified_df'] = pd.concat([st.session_state['modified_df'], new_player], ignore_index=True)
+                        else:
+                            st.session_state['modified_df'] = pd.concat([df, new_player], ignore_index=True)
 
-                    st.success(f"✅ Updated XI Cohesion Score: {new_score}")
-                    st.dataframe(combined_df[["Player Name", "Primary skill type", "Positional synergy index"]])
+                        st.success(f"✅ {player_name} added to the XI.")
 
-                    fig2 = px.bar(
-                        combined_df,
-                        x="Player Name",
-                        y="Positional synergy index",
-                        color="Primary skill type",
-                        title="Updated Synergy Index per Player"
-                    )
-                    st.plotly_chart(fig2, use_container_width=True)
+                    st.divider()
 
-                    csv_combined = combined_df.to_csv(index=False).encode("utf-8")
-                    st.download_button("⬇ Download Updated Final Unbiased XI", csv_combined, "updated_cohesion_score.csv", "text/csv")
+                    # 3️⃣ Recalculate
+                    if st.button("🔄 Recalculate Cohesion After Changes"):
+                        updated_df = st.session_state.get('modified_df', df)
+                        new_score = round(updated_df["Positional synergy index"].mean(), 2)
 
-        else:
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
+                        display_cohesion_status(new_score)
+
+                        st.markdown("### 📊 Updated XI Synergy Table")
+                        st.dataframe(updated_df[[
+                            "Player Name", "Partnership runs", "Wickets in tandem",
+                            "Matches played together", "Positional synergy index"
+                        ]])
+
+                        fig_updated = px.bar(
+                            updated_df, x="Player Name", y="Positional synergy index",
+                            color="Primary skill type", title="Updated Synergy Index per Player"
+                        )
+                        st.plotly_chart(fig_updated, use_container_width=True)
+
+                        csv_out_updated = updated_df.to_csv(index=False).encode("utf-8")
+                        st.download_button("⬇ Download Updated CSV", csv_out_updated, "updated_cohesion_score.csv", "text/csv")
+    else:
+        st.info("📁 Please upload a CSV file with the required cohesion metrics to continue.")
 
 
         # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
-    pressure_file = st.file_uploader("📂 Upload CSV with Pressure Metrics", type="csv")
+    st.subheader("🔥 Pressure Heatmap XI")
+    pressure_file = st.file_uploader("📂 Upload CSV with Pressure Metrics", type="csv", key="pressure_upload")
 
     if pressure_file:
         df = pd.read_csv(pressure_file)
 
-        if all(col in df.columns for col in ["Player Name", "Role", "Performance_score", "Pressure_score"]):
-            import numpy as np
+        required_cols = ["Player Name", "Role", "Performance_score", "Pressure_score"]
+        if all(col in df.columns for col in required_cols):
+            np.random.seed(42)
 
             phase_options = ["Powerplay", "Middle Overs", "Death Overs"]
             situation_options = ["Chasing", "Defending", "Clutch Moments"]
 
-            np.random.seed(42)
+            # Randomly assign phase & match situations
             df["Phase Suitability"] = np.random.choice(phase_options, size=len(df))
             df["Match Situation"] = np.random.choice(situation_options, size=len(df))
-            df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1], labels=["Low", "Medium", "High"])
+
+            # Categorize Pressure Zone
+            df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1],
+                                         labels=["Low", "Medium", "High"])
+
+            # Calculate Impact Rating
             df["Impact Rating"] = round((df["Performance_score"] * 0.6 + df["Pressure_score"] * 0.4) * 10, 2)
 
             st.success("✅ File processed with Pressure Heatmap logic.")
-            st.subheader("🔥 Pressure Heatmap XI")
-            st.markdown("Visualize average impact rating under pressure situations.")
+            st.markdown("Visualize how your players perform under pressure situations and phases.")
 
+            # 📊 Heatmap Visualization
+            st.markdown("### 📊 Pressure Heatmap by Situation & Zone")
             heatmap_data = df.pivot_table(
                 index="Match Situation",
                 columns="Pressure Zone",
@@ -289,23 +313,30 @@ elif selected_feature == "Pressure Heatmap XI":
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            top_pressure_players = df[df["Pressure Zone"] == "High"].sort_values(by="Impact Rating", ascending=False).head(11)
-            st.markdown("### 💪 Top XI Under Pressure")
-            st.dataframe(top_pressure_players[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
+            # 🏏 Top XI Under Pressure
+            st.markdown("### 💪 Top XI Under High Pressure")
+            top_xi = df[df["Pressure Zone"] == "High"].sort_values(
+                by="Impact Rating", ascending=False
+            ).head(11)
 
-            csv_out = top_pressure_players.to_csv(index=False).encode("utf-8")
+            st.dataframe(top_xi[[
+                "Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"
+            ]])
+
+            # ⬇ Download Button
+            csv_out = top_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Pressure Heatmap XI", csv_out, "pressure_heatmap_xi.csv", "text/csv")
         else:
             st.error("❌ Missing required columns: 'Player Name', 'Role', 'Performance_score', 'Pressure_score'")
+    else:
+        st.info("📁 Please upload a CSV file with required pressure metrics to continue.")
 
 
-
-       # ------------------ TACTICAL ROLE ANALYZER (With Calculation & Visualizations) ------------------
-
+        # ------------------ TACTICAL ROLE ANALYZER ------------------
 elif selected_feature == "Tactical Role Analyzer":
     st.subheader("📝 Tactical Role Analyzer (With Tactical Role Assignment & Insights)")
 
-    tactical_file = st.file_uploader("📂 Upload CSV with Tactical Metrics", type="csv")
+    tactical_file = st.file_uploader("📂 Upload CSV with Tactical Metrics", type="csv", key="tactical_upload")
 
     if tactical_file:
         df = pd.read_csv(tactical_file)
@@ -316,7 +347,10 @@ elif selected_feature == "Tactical Role Analyzer":
             "DO_ER", "wicket_taking_percentage", "ER_vs_LHB", "ER_vs_RHB"
         ]
 
-        if all(col in df.columns for col in required_columns):
+        missing = [col for col in required_columns if col not in df.columns]
+        if missing:
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
+        else:
             st.success("✅ File loaded with all tactical metrics.")
 
             # Phase Suitability
@@ -378,7 +412,7 @@ elif selected_feature == "Tactical Role Analyzer":
             df["recommended_tactical_role"] = roles.apply(lambda x: x[0])
             df["backup_tactical_role"] = roles.apply(lambda x: x[1])
 
-            # Tactical Role Fit Score (randomized demo — can replace with your logic)
+            # Tactical Role Fit Score (Random)
             np.random.seed(42)
             df["tactical_role_fit_score"] = np.random.randint(75, 96, size=len(df))
 
@@ -425,18 +459,15 @@ elif selected_feature == "Tactical Role Analyzer":
                 title="Matchup Strength vs Tactical Role Fit Score"
             )
             st.plotly_chart(scatter_plot, use_container_width=True)
+    else:
+        st.info("📁 Please upload a CSV file with tactical metrics to continue.")
 
-        else:
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
-  
 
-   # -------------------- Impact- Weighted contribution index -------------------- #
-
+        # ------------------ IMPACT-WEIGHTED CONTRIBUTION VALIDATOR ------------------
 elif selected_feature == "Impact-weighted index":
     st.subheader("📊 Impact-Weighted Contribution Validator")
 
-    impact_file = st.file_uploader("📂 Upload Unbiased XI CSV (with input columns)", type="csv")
+    impact_file = st.file_uploader("📂 Upload Unbiased XI CSV (with input columns)", type="csv", key="impact_upload")
 
     impact_required_columns = [
         "Player Name", "Batting Position", "Primary Role", "Recent Matches",
@@ -452,119 +483,124 @@ elif selected_feature == "Impact-weighted index":
         "Opener": 9.0, "Anchor": 8.0, "Floater": 8.5, "Finisher": 9.2,
         "All-rounder": 8.5, "Spinner": 7.5, "Fast Bowler": 8.0, "Death Specialist": 9.0
     }
+
     pitch_map = {"Pace": 8.5, "Spin": 7.5, "Balanced": 8.0}
+
+    def compute_scores(input_df):
+        input_df["Balls Faced"] = input_df["Balls Faced"].replace(0, 1)
+        input_df["Impact Score"] = ((input_df["Runs"] / input_df["Balls Faced"]) * input_df["Match Impact Rating"]).round(2)
+        input_df["Role Match Score"] = input_df["Primary Role"].map(role_score_map).fillna(7.0)
+
+        def generate_phase_tag(phase):
+            tags = {"Powerplay": "PP", "Middle": "M", "Death": "D"}
+            return ", ".join([f"{t}✔" if phase == p else f"{t}❌" for p, t in tags.items()])
+
+        input_df["Phase Balance Tag"] = input_df["Batting Phase Strength"].apply(generate_phase_tag)
+        input_df["Match-up Alert"] = input_df["Opposition Match-up Rating"].apply(lambda x: "✅" if x >= 7 else "⚠")
+        anchor_count = input_df["Primary Role"].value_counts().get("Anchor", 0)
+        input_df["Role Balance Alert"] = ["❌ Too Many Anchors" if anchor_count > 2 else "✅ Balanced"] * len(input_df)
+        input_df["Captaincy Validation"] = input_df["Captaincy Score"].apply(lambda x: "✅" if x >= 7 else "❌")
+        input_df["Pitch Fit Score"] = input_df["Pitch Suitability"].map(pitch_map).fillna(7.0)
+
+        input_df["Overall Contribution Index"] = (
+            (input_df["Impact Score"] + input_df["Role Match Score"] + input_df["Pitch Fit Score"]) / 3
+        ).round(2)
+
+        input_df["Selected in Final XI"] = input_df["Overall Contribution Index"] >= 8.0
+        return input_df
 
     if impact_file:
         df = pd.read_csv(impact_file)
 
-        if all(col in df.columns for col in impact_required_columns):
-            st.success("✅ File loaded with all required input columns.")
-
-            def compute_scores(input_df):
-                input_df["Impact Score"] = round((input_df["Runs"] / input_df["Balls Faced"]) * input_df["Match Impact Rating"], 2)
-                input_df["Role Match Score"] = input_df["Primary Role"].map(role_score_map).fillna(7.0)
-                input_df["Phase Balance Tag"] = input_df.apply(lambda row: f"{'PP-✔️' if row['Batting Phase Strength']=='Powerplay' else 'PP-❌'}, "
-                                                                    f"{'M-✔️' if row['Batting Phase Strength']=='Middle' else 'M-❌'}, "
-                                                                    f"{'D-✔️' if row['Batting Phase Strength']=='Death' else 'D-❌'}", axis=1)
-                input_df["Match-up Alert"] = input_df["Opposition Match-up Rating"].apply(lambda x: "✅" if x >= 7 else "⚠️")
-                anchor_count = input_df["Primary Role"].value_counts().get("Anchor", 0)
-                input_df["Role Balance Alert"] = ["❌ Too Many Anchors" if anchor_count > 2 else "✅ Balanced"] * len(input_df)
-                input_df["Captaincy Validation"] = input_df["Captaincy Score"].apply(lambda x: "✅" if x >= 7 else "❌")
-                input_df["Pitch Fit Score"] = input_df["Pitch Suitability"].map(pitch_map).fillna(7.0)
-                input_df["Overall Contribution Index"] = round(
-                    (input_df["Impact Score"] + input_df["Role Match Score"] + input_df["Pitch Fit Score"]) / 3, 2
-                )
-                input_df["Selected in Final XI"] = input_df["Overall Contribution Index"] >= 8.0
-                return input_df
-
+        missing_cols = [col for col in impact_required_columns if col not in df.columns]
+        if missing_cols:
+            st.error("❌ Missing required columns:\n- " + "\n- ".join(missing_cols))
+        else:
+            df = df[[col for col in impact_required_columns]]
             df = compute_scores(df)
-            selected_xi = df[df["Selected in Final XI"] == True]
-            not_selected = df[df["Selected in Final XI"] == False]
 
-            st.subheader("📋 Initial Validated XI Table")
+            st.subheader("📋 Evaluated Player Table with Impact Metrics")
             st.dataframe(df)
 
+            selected_xi = df[df["Selected in Final XI"] == True]
+
+            st.markdown("### ✅ Selected Players Based on Contribution Index")
+            st.dataframe(selected_xi[[
+                "Player Name", "Primary Role", "Impact Score", "Role Match Score", "Pitch Fit Score",
+                "Overall Contribution Index", "Selected in Final XI"
+            ]])
+
+            if len(selected_xi) < 11:
+                st.warning(f"⚠ Only {len(selected_xi)} players selected. Need {11 - len(selected_xi)} more.")
+                st.markdown("### ✍ Add Remaining Players Manually")
+
+                num_to_add = 11 - len(selected_xi)
+                manual_entries = []
+
+                for i in range(num_to_add):
+                    with st.expander(f"🧍 Player {i+1} Details"):
+                        player = {
+                            "Player Name": st.text_input(f"Name {i+1}"),
+                            "Batting Position": st.text_input(f"Batting Position {i+1}"),
+                            "Primary Role": st.selectbox(f"Primary Role {i+1}", list(role_score_map.keys())),
+                            "Recent Matches": st.number_input(f"Recent Matches {i+1}", 0),
+                            "Runs": st.number_input(f"Runs {i+1}", 0),
+                            "Balls Faced": st.number_input(f"Balls Faced {i+1}", 1),
+                            "Wickets": st.number_input(f"Wickets {i+1}", 0),
+                            "Overs Bowled": st.number_input(f"Overs Bowled {i+1}", 0.0),
+                            "Bowling Economy": st.number_input(f"Bowling Economy {i+1}", 0.0),
+                            "Batting Phase Strength": st.selectbox(f"Batting Phase Strength {i+1}", ["Powerplay", "Middle", "Death"]),
+                            "Bowling Phase Strength": st.selectbox(f"Bowling Phase Strength {i+1}", ["Powerplay", "Middle", "Death"]),
+                            "Match Impact Rating": st.number_input(f"Match Impact Rating {i+1}", 0.0),
+                            "Fitness Status": st.selectbox(f"Fitness Status {i+1}", ["Fit", "Unfit"]),
+                            "Pressure Performance": st.number_input(f"Pressure Performance {i+1}", 0.0),
+                            "Pitch Suitability": st.selectbox(f"Pitch Suitability {i+1}", list(pitch_map.keys())),
+                            "Opposition Match-up Rating": st.number_input(f"Opposition Match-up Rating {i+1}", 0.0),
+                            "Captaincy Score": st.number_input(f"Captaincy Score {i+1}", 0.0),
+                            "Format": st.selectbox(f"Format {i+1}", ["ODI", "T20", "Test"]),
+                            "Avg": st.number_input(f"Avg {i+1}", 0.0),
+                            "SR": st.number_input(f"SR {i+1}", 0.0),
+                            "50s": st.number_input(f"50s {i+1}", 0),
+                            "100s": st.number_input(f"100s {i+1}", 0),
+                            "Pressure_score": st.number_input(f"Pressure_score {i+1}", 0.0),
+                            "Fame_index": st.number_input(f"Fame_index {i+1}", 0.0),
+                            "Endorsement_score": st.number_input(f"Endorsement_score {i+1}", 0.0),
+                            "Performance_score": st.number_input(f"Performance_score {i+1}", 0.0),
+                            "Bias_score": st.number_input(f"Bias_score {i+1}", 0.0),
+                            "Is_Biased": st.selectbox(f"Is Biased {i+1}", ["Yes", "No"])
+                        }
+                        manual_entries.append(player)
+
+                if st.button("📊 Evaluate Manually Entered Players"):
+                    manual_df = pd.DataFrame(manual_entries)
+                    manual_df = compute_scores(manual_df)
+                    df = pd.concat([df, manual_df], ignore_index=True)
+                    selected_xi = df[df["Selected in Final XI"] == True]
+
             if len(selected_xi) == 11:
-                st.success("✅ All 11 players selected with high contribution score.")
-                st.dataframe(selected_xi)
+                st.success("✅ All 11 players selected with high contribution scores.")
 
-                csv_data = selected_xi.to_csv(index=False).encode("utf-8")
-                st.download_button("⬇ Download Final Unbiased XI", csv_data, "Final_Unbiased_XI.csv", "text/csv")
+            csv_output = selected_xi.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇ Download Final XI", csv_output, "impact_weighted_final_xi.csv", "text/csv")
 
-            else:
-                needed = 11 - len(selected_xi)
-                st.warning(f"⚠️ Only {len(selected_xi)} players selected. {needed} replacements needed to complete the XI.")
+            st.markdown("### 📈 Contribution Index Visualization")
+            fig = px.bar(
+                df.sort_values("Overall Contribution Index", ascending=False),
+                x="Player Name", y="Overall Contribution Index",
+                color="Primary Role", text_auto=True,
+                title="Overall Contribution Index per Player"
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
-                st.markdown("### 👇 Add Replacement Players")
-
-                manual_players = []
-                num_replacements = st.number_input("🧍 Enter number of replacements to input", min_value=needed, step=1)
-
-                for i in range(int(num_replacements)):
-                    with st.expander(f"➕ Replacement Player {i+1}", expanded=False):
-                        name = st.text_input(f"Player Name {i+1}", key=f"name_{i}")
-                        batting_pos = st.number_input(f"Batting Position {i+1}", min_value=1, max_value=11, key=f"batpos_{i}")
-                        role = st.selectbox(f"Primary Role {i+1}", role_score_map.keys(), key=f"role_{i}")
-                        matches = st.number_input(f"Recent Matches {i+1}", min_value=1, max_value=50, key=f"matches_{i}")
-                        runs = st.number_input(f"Runs {i+1}", min_value=0, key=f"runs_{i}")
-                        balls = st.number_input(f"Balls Faced {i+1}", min_value=1, key=f"balls_{i}")
-                        wickets = st.number_input(f"Wickets {i+1}", min_value=0, key=f"wickets_{i}")
-                        overs = st.number_input(f"Overs Bowled {i+1}", min_value=0.0, key=f"overs_{i}")
-                        econ = st.number_input(f"Bowling Economy {i+1}", min_value=0.0, key=f"econ_{i}")
-                        bat_phase = st.selectbox(f"Batting Phase Strength {i+1}", ["Powerplay", "Middle", "Death"], key=f"bphase_{i}")
-                        bowl_phase = st.selectbox(f"Bowling Phase Strength {i+1}", ["Powerplay", "Middle", "Death"], key=f"bowphase_{i}")
-                        impact = st.slider(f"Match Impact Rating {i+1}", 0.0, 10.0, 7.0, key=f"impact_{i}")
-                        fitness = st.selectbox(f"Fitness Status {i+1}", ["Fit", "Unfit"], key=f"fit_{i}")
-                        pressure = st.slider(f"Pressure Performance {i+1}", 0.0, 10.0, 7.0, key=f"pressure_{i}")
-                        pitch = st.selectbox(f"Pitch Suitability {i+1}", pitch_map.keys(), key=f"pitch_{i}")
-                        matchup = st.slider(f"Opposition Match-up Rating {i+1}", 0.0, 10.0, 7.0, key=f"matchup_{i}")
-                        captaincy = st.slider(f"Captaincy Score {i+1}", 0.0, 10.0, 5.0, key=f"captaincy_{i}")
-                        format = st.text_input(f"Format {i+1}", key=f"format_{i}")
-                        avg = st.text_input(f"Avg {i+1}", key=f"avg_{i}")
-                        sr = st.text_input(f"SR {i+1}", key=f"sr_{i}")
-                        fifty = st.text_input(f"50s {i+1}", key=f"fifty_{i}")
-                        century = st.text_input(f"100s {i+1}", key=f"century_{i}")
-                        fame = st.text_input(f"Fame_index {i+1}", key=f"fame_{i}")
-                        endorse = st.text_input(f"Endorsement_score {i+1}", key=f"endorse_{i}")
-                        perf = st.text_input(f"Performance_score {i+1}", key=f"perf_{i}")
-                        bias = st.text_input(f"Bias_score {i+1}", key=f"bias_{i}")
-                        is_biased = st.checkbox(f"Is_Biased {i+1}", key=f"isbiased_{i}")
-
-                        manual_players.append({
-                            "Player Name": name, "Batting Position": batting_pos, "Primary Role": role, "Recent Matches": matches,
-                            "Runs": runs, "Balls Faced": balls, "Wickets": wickets, "Overs Bowled": overs, "Bowling Economy": econ,
-                            "Batting Phase Strength": bat_phase, "Bowling Phase Strength": bowl_phase, "Match Impact Rating": impact,
-                            "Fitness Status": fitness, "Pressure Performance": pressure, "Pitch Suitability": pitch,
-                            "Opposition Match-up Rating": matchup, "Captaincy Score": captaincy, "Format": format, "Avg": avg,
-                            "SR": sr, "50s": fifty, "100s": century, "Pressure_score": pressure, "Fame_index": fame,
-                            "Endorsement_score": endorse, "Performance_score": perf, "Bias_score": bias, "Is_Biased": is_biased
-                        })
-
-                if st.button("✅ Add & Recalculate XI"):
-                    new_df = pd.DataFrame(manual_players)
-                    combined_df = pd.concat([df, new_df], ignore_index=True)
-                    combined_df = compute_scores(combined_df)
-                    final_xi = combined_df.sort_values("Overall Contribution Index", ascending=False).head(11)
-                    final_xi["Selected in Final XI"] = True
-
-                    st.success("✅ Final XI Created After Replacements")
-                    st.dataframe(final_xi)
-
-                    csv_final = final_xi.to_csv(index=False).encode("utf-8")
-                    st.download_button("⬇ Download Final XI (After Replacement)", csv_final, "Final_Unbiased_XI_After_Replacement.csv", "text/csv")
-
-        else:
-            missing_cols = [col for col in impact_required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n- " + "\n- ".join(missing_cols))
+    else:
+        st.info("📁 Please upload a CSV file with required columns to begin analysis.")
 
 
-
-     # ----------------------- Role Balance Auditor --------------------- #
-
+        # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
-    st.subheader("⚖️ Role Balance Auditor (With Role Distribution & Alerts)")
+    st.subheader("⚖ Role Balance Auditor (With Role Distribution & Alerts)")
 
-    role_file = st.file_uploader("📂 Upload CSV with Player Roles", type="csv")
+    role_file = st.file_uploader("📂 Upload CSV with Player Roles", type="csv", key="role_balance_upload")
 
     if role_file:
         df = pd.read_csv(role_file)
@@ -586,19 +622,18 @@ elif selected_feature == "Role Balance Auditor":
                 "Death Specialist": (1, 2)
             }
 
-            # Count role occurrences
             role_counts = df["Primary Role"].value_counts().reset_index()
             role_counts.columns = ["Primary Role", "Count"]
 
-            # Balance Status
+            # Role balance checker
             def get_balance_status(role, count):
                 if role not in role_limits:
-                    return "⚠️ Unknown Role"
+                    return "⚠ Unknown Role"
                 min_r, max_r = role_limits[role]
                 if count < min_r:
-                    return "⚠️ Too Few"
+                    return "⚠ Too Few"
                 elif count > max_r:
-                    return "⚠️ Too Many"
+                    return "⚠ Too Many"
                 else:
                     return "✅ Balanced"
 
@@ -614,11 +649,11 @@ elif selected_feature == "Role Balance Auditor":
                 "Player Name", "Primary Role", "Batting Position", "Format", "Count", "Balance Status"
             ]]
 
-            # Display DataFrame
+            # 📋 Display Data
             st.subheader("📋 Role Balance Report")
             st.dataframe(audit_df)
 
-            # Download option
+            # ⬇ Download
             csv_data = audit_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "⬇ Download Role Balance CSV",
@@ -627,7 +662,7 @@ elif selected_feature == "Role Balance Auditor":
                 mime="text/csv"
             )
 
-            # Charts
+            # 📊 Charts
             st.subheader("📈 Role Distribution Overview")
 
             pie_chart = px.pie(
@@ -645,6 +680,8 @@ elif selected_feature == "Role Balance Auditor":
         else:
             missing = [col for col in required_columns if col not in df.columns]
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
+    else:
+        st.info("📁 Please upload a CSV file with roles to continue.")
 
 
 # ------------------ RESET APP ------------------
