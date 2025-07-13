@@ -40,7 +40,14 @@ st.markdown("""
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased XI Tools")
-selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "XI Cohesion score", "Pressure Heatmap XI", "Tactical Role Analyzer", "Impact-weighted index", "Role Balance Auditor"])
+selected_feature = st.sidebar.radio("Select Feature", [
+    "Main App Flow", 
+    "XI Cohesion score", 
+    "Pressure Heatmap XI", 
+    "Tactical Role Analyzer", 
+    "Impact-weighted index", 
+    "Role Balance Auditor"
+])
 
 # ------------------ HEADER ------------------
 st.markdown("<h1 style='text-align: center;'>🏏 Unbiased XI Selector App</h1>", unsafe_allow_html=True)
@@ -97,15 +104,28 @@ if selected_feature == "Main App Flow":
                     return batting + bowling
                 return 0
 
-            df["Performance_score"] = df.apply(compute_performance, axis=1)
-            df["Fame_index_scaled"] = scaler.fit_transform(df[["Fame_index"]])
-            df["Endorsement_score_scaled"] = scaler.fit_transform(df[["Endorsement_score"]])
-            df["Bias_score"] = (df["Fame_index_scaled"] + df["Endorsement_score_scaled"]) / 2
-            threshold = df["Bias_score"].quantile(0.75)
-            df["Is_Biased"] = df["Bias_score"] > threshold
+            # --- Performance Score ---
+            df["Performance_score_raw"] = df.apply(compute_performance, axis=1)
+            df["Performance_score"] = scaler.fit_transform(df[["Performance_score_raw"]])
+
+            # --- Fame Score ---
+            fame_scaled = scaler.fit_transform(df[["Fame_index"]])
+            endorse_scaled = scaler.fit_transform(df[["Endorsement_score"]])
+            df["Fame_score"] = fame_scaled * 0.6 + endorse_scaled * 0.4
+
+            # --- Bias Detection ---
+            fame_threshold = df["Fame_score"].quantile(0.75)
+            performance_threshold = df["Performance_score"].quantile(0.25)
+            df["Is_Biased"] = (df["Fame_score"] > fame_threshold) & (df["Performance_score"] < performance_threshold)
 
             st.session_state.df = df
-            st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Performance_score", "Bias_score"]])
+
+            st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Fame_score", "Performance_score", "Is_Biased"]])
+
+            # Optional Scatter Plot
+            fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
+                             hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
+            st.plotly_chart(fig, use_container_width=True)
 
         # Generate Final Unbiased XI
         if st.button("Generate Final Unbiased XI"):
@@ -118,7 +138,7 @@ if selected_feature == "Main App Flow":
             allrounders = unbiased_df[unbiased_df["Role"] == "All-rounder"].nlargest(2, "Performance_score")
 
             final_xi = pd.concat([batters, bowlers, allrounders])
-            st.dataframe(final_xi[["Player Name", "Role", "Performance_score", "Bias_score"]])
+            st.dataframe(final_xi[["Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased"]])
 
             csv = final_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
