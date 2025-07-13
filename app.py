@@ -64,7 +64,6 @@ if selected_feature == "Main App Flow":
             df = pd.read_csv(uploaded_file)
             df.dropna(inplace=True)
             st.session_state.df = df
-            st.session_state.unbiased_xi_df = df
             st.session_state.step = 1
             st.success("✅ File uploaded successfully.")
 
@@ -103,25 +102,17 @@ if selected_feature == "Main App Flow":
                     return batting + bowling
                 return 0
 
-            # --- Performance Score ---
             df["Performance_score_raw"] = df.apply(compute_performance, axis=1)
             df["Performance_score"] = scaler.fit_transform(df[["Performance_score_raw"]])
+            df["Fame_score"] = scaler.fit_transform(df[["Fame_index"]]) * 0.6 + scaler.fit_transform(df[["Endorsement_score"]]) * 0.4
 
-            # --- Fame Score ---
-            fame_scaled = scaler.fit_transform(df[["Fame_index"]])
-            endorse_scaled = scaler.fit_transform(df[["Endorsement_score"]])
-            df["Fame_score"] = fame_scaled * 0.6 + endorse_scaled * 0.4
-
-            # --- Bias Detection ---
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
             df["Is_Biased"] = (df["Fame_score"] > fame_threshold) & (df["Performance_score"] < performance_threshold)
 
             st.session_state.df = df
-
             st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Fame_score", "Performance_score", "Is_Biased"]])
 
-            # Optional Scatter Plot
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
                              hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
             st.plotly_chart(fig, use_container_width=True)
@@ -137,8 +128,8 @@ if selected_feature == "Main App Flow":
             allrounders = unbiased_df[unbiased_df["Role"] == "All-rounder"].nlargest(2, "Performance_score")
 
             final_xi = pd.concat([batters, bowlers, allrounders])
+            st.session_state.final_xi = final_xi  # save for manual leadership
 
-            # Leadership Score = 0.6 * Performance + 0.4 * Fame
             final_xi["Leadership_Score"] = 0.6 * final_xi["Performance_score"] + 0.4 * final_xi["Fame_score"]
 
             captain = final_xi.loc[final_xi["Leadership_Score"].idxmax()]
@@ -148,23 +139,51 @@ if selected_feature == "Main App Flow":
             vice_captain = remaining.loc[remaining["Leadership_Score"].idxmax()]
             final_xi["Vice_Captain"] = final_xi["Player Name"] == vice_captain["Player Name"]
 
-            st.dataframe(final_xi[[
-                "Player Name", "Role", "Performance_score", "Fame_score", 
-                "Is_Biased", "Captain", "Vice_Captain"
-            ]])
+            st.dataframe(final_xi[["Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased", "Captain", "Vice_Captain"]])
 
-            # CSV Download
             csv = final_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
 
-            # Show Captain and Vice-Captain
             st.success(f"🏏 **Recommended Captain:** {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
-            st.info(f"🧢 **Vice-Captain:** {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
+            st.info(f"🥢 **Vice-Captain:** {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
 
-            # 🧠 Compare with Rohit Sharma
             if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
-                st.warning(f"⚠️ Rohit Sharma is the **current captain** but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).\n\n👉 Recommendation: Consider changing captain to reflect **current performance + impact**.")
+                st.warning(f"⚠️ Rohit Sharma is the **current captain** but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+
+        # Manual Leadership Section
+        if "final_xi" in st.session_state:
+            st.markdown("---")
+            st.subheader("✍️ Select Future Leadership Manually")
+
+            with st.form("manual_leadership_form"):
+                manual_candidates = st.multiselect(
+                    "Select at least 2 players from the Unbiased XI for custom captain & vice-captain evaluation:",
+                    options=st.session_state.final_xi["Player Name"].tolist()
+                )
+                submitted = st.form_submit_button("🧠 Calculate Leadership")
+
+            if submitted:
+                if len(manual_candidates) >= 2:
+                    manual_df = st.session_state.final_xi[st.session_state.final_xi["Player Name"].isin(manual_candidates)].copy()
+                    manual_df["Leadership_Score"] = 0.6 * manual_df["Performance_score"] + 0.4 * manual_df["Fame_score"]
+
+                    manual_captain = manual_df.loc[manual_df["Leadership_Score"].idxmax()]
+                    manual_df["Captain"] = manual_df["Player Name"] == manual_captain["Player Name"]
+
+                    remaining_manual = manual_df[manual_df["Player Name"] != manual_captain["Player Name"]]
+                    manual_vice_captain = remaining_manual.loc[remaining_manual["Leadership_Score"].idxmax()]
+                    manual_df["Vice_Captain"] = manual_df["Player Name"] == manual_vice_captain["Player Name"]
+
+                    st.success(f"🥢 **Manually Selected Captain:** {manual_captain['Player Name']} | Leadership Score: {manual_captain['Leadership_Score']:.2f}")
+                    st.info(f"🎖 **Manually Selected Vice-Captain:** {manual_vice_captain['Player Name']} | Leadership Score: {manual_vice_captain['Leadership_Score']:.2f}")
+
+                    st.dataframe(manual_df[[
+                        "Player Name", "Role", "Performance_score", "Fame_score",
+                        "Leadership_Score", "Captain", "Vice_Captain"
+                    ]])
+                else:
+                    st.warning("👥 Please select at least 2 players to perform leadership calculation.")
 
 
 # ------------------ XI COHESION SCORE ------------------
