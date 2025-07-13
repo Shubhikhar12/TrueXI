@@ -26,7 +26,6 @@ def load_lottie_url(url: str):
     return None
 
 lottie_cricket = load_lottie_url("https://assets7.lottiefiles.com/packages/lf20_vu1huepg.json")
-lottie_team = load_lottie_url("https://assets10.lottiefiles.com/packages/lf20_kuhijlvx.json")
 
 # ------------------ STYLING ------------------
 st.markdown("""
@@ -138,10 +137,35 @@ if selected_feature == "Main App Flow":
             allrounders = unbiased_df[unbiased_df["Role"] == "All-rounder"].nlargest(2, "Performance_score")
 
             final_xi = pd.concat([batters, bowlers, allrounders])
-            st.dataframe(final_xi[["Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased"]])
 
+            # Leadership Score = 0.6 * Performance + 0.4 * Fame
+            final_xi["Leadership_Score"] = 0.6 * final_xi["Performance_score"] + 0.4 * final_xi["Fame_score"]
+
+            captain = final_xi.loc[final_xi["Leadership_Score"].idxmax()]
+            final_xi["Captain"] = final_xi["Player Name"] == captain["Player Name"]
+
+            remaining = final_xi[final_xi["Player Name"] != captain["Player Name"]]
+            vice_captain = remaining.loc[remaining["Leadership_Score"].idxmax()]
+            final_xi["Vice_Captain"] = final_xi["Player Name"] == vice_captain["Player Name"]
+
+            st.dataframe(final_xi[[
+                "Player Name", "Role", "Performance_score", "Fame_score", 
+                "Is_Biased", "Captain", "Vice_Captain"
+            ]])
+
+            # CSV Download
             csv = final_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
+
+            # Show Captain and Vice-Captain
+            st.success(f"🏏 **Recommended Captain:** {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
+            st.info(f"🧢 **Vice-Captain:** {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
+
+            # 🧠 Compare with Rohit Sharma
+            if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
+                rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
+                st.warning(f"⚠️ Rohit Sharma is the **current captain** but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).\n\n👉 Recommendation: Consider changing captain to reflect **current performance + impact**.")
+
 
 # ------------------ XI COHESION SCORE ------------------
 elif selected_feature == "XI Cohesion score":
