@@ -92,7 +92,7 @@ if selected_feature == "Main App Flow":
             df["Bowling Econ (scaled)"] = 1 - scaler.fit_transform(df[["Bowling Economy"]])
 
             def compute_performance(row):
-                if row["Role"] == "Batter":
+                if row["Role"] in ["Batter", "WK-Batter"]:
                     return row["Batting Avg (scaled)"] * 0.6 + row["Batting SR (scaled)"] * 0.4
                 elif row["Role"] == "Bowler":
                     return row["Wickets (scaled)"] * 0.6 + row["Bowling Econ (scaled)"] * 0.4
@@ -117,18 +117,41 @@ if selected_feature == "Main App Flow":
                              hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
             st.plotly_chart(fig, use_container_width=True)
 
-        # Generate Final Unbiased XI
+        # ------------------ Generate Final Unbiased XI ------------------
         if st.button("Generate Final Unbiased XI"):
             st.subheader("🏆 Final Unbiased XI")
             df = st.session_state.df
             unbiased_df = df[df["Is_Biased"] == False]
 
-            batters = unbiased_df[unbiased_df["Role"] == "Batter"].nlargest(5, "Performance_score")
-            bowlers = unbiased_df[unbiased_df["Role"] == "Bowler"].nlargest(4, "Performance_score")
-            allrounders = unbiased_df[unbiased_df["Role"] == "All-rounder"].nlargest(2, "Performance_score")
+            wk_batter = None  # ← FIX: Always define this variable
 
-            final_xi = pd.concat([batters, bowlers, allrounders])
-            st.session_state.final_xi = final_xi  # save for manual leadership
+            # Step 1: Try Unbiased WK-Batter
+            wk_unbiased = unbiased_df[unbiased_df["Role"] == "Wk-Batter"].copy()
+            if not wk_unbiased.empty:
+                wk_unbiased["Leadership_Score"] = 0.6 * wk_unbiased["Performance_score"] + 0.4 * wk_unbiased["Fame_score"]
+                wk_batter = wk_unbiased.nlargest(1, "Leadership_Score")
+                st.info(f"✅ WK-Batter selected from unbiased list: {wk_batter.iloc[0]['Player Name']}")
+            else:
+                # Fallback: Select from original uploaded dataset (even if biased)
+                wk_all = df[df["Role"] == "Wk-Batter"].copy()
+                if not wk_all.empty:
+                    wk_all["Leadership_Score"] = 0.6 * wk_all["Performance_score"] + 0.4 * wk_all["Fame_score"]
+                    wk_batter = wk_all.nlargest(1, "Leadership_Score")
+                    st.warning(f"⚠️ No unbiased WK-Batter found. Selected best available from full dataset: {wk_batter.iloc[0]['Player Name']}")
+                else:
+                    st.error("❌ No WK-Batter found at all in the dataset. Please include at least one.")
+                      # Avoid running below code
+
+            # Step 2: Select remaining 10 players (excluding selected WK-Batter)
+            remaining_pool = unbiased_df[~unbiased_df["Player Name"].isin(wk_batter["Player Name"])]
+
+            batters = remaining_pool[remaining_pool["Role"] == "Batter"].nlargest(4, "Performance_score")
+            bowlers = remaining_pool[remaining_pool["Role"] == "Bowler"].nlargest(4, "Performance_score")
+            allrounders = remaining_pool[remaining_pool["Role"] == "All-rounder"].nlargest(2, "Performance_score")
+
+            final_xi = pd.concat([wk_batter, batters, bowlers, allrounders])
+            final_xi = final_xi.drop_duplicates(subset="Player Name").head(11)
+            st.session_state.final_xi = final_xi
 
             final_xi["Leadership_Score"] = 0.6 * final_xi["Performance_score"] + 0.4 * final_xi["Fame_score"]
 
@@ -149,9 +172,8 @@ if selected_feature == "Main App Flow":
 
             if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
-                st.warning(f"⚠️ Rohit Sharma is the **current captain** but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
-
-        # Manual Leadership Section
+                st.warning(f"⚠️ Rohit Sharma is the **current captain**, but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+        # ------------------ Manual Leadership ------------------
         if "final_xi" in st.session_state:
             st.markdown("---")
             st.subheader("✍️ Select Future Leadership Manually")
