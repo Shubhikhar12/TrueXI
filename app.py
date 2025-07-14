@@ -745,11 +745,3 @@ elif selected_feature == "Role Balance Auditor":
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
     else:
         st.info("📁 Please upload a CSV file with roles to continue.")
-
-
-# ------------------ RESET APP ------------------
-st.markdown("---")
-if st.button("🔄 Restart App"):
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    st.experimental_rerun()
