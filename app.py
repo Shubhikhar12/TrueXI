@@ -106,9 +106,18 @@ if selected_feature == "Main App Flow":
             df["Performance_score"] = scaler.fit_transform(df[["Performance_score_raw"]])
             df["Fame_score"] = scaler.fit_transform(df[["Fame_index"]]) * 0.6 + scaler.fit_transform(df[["Endorsement_score"]]) * 0.4
 
+             # 💡 NEW: Fair Bias Detection Logic with Margin
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
-            df["Is_Biased"] = (df["Fame_score"] > fame_threshold) & (df["Performance_score"] < performance_threshold)
+            margin = 0.05  # ← 5% buffer on both sides
+
+
+            fame_threshold = df["Fame_score"].quantile(0.75)
+            performance_threshold = df["Performance_score"].quantile(0.25)
+            df["Is_Biased"] = (
+           (df["Fame_score"] > fame_threshold + margin) &
+           (df["Performance_score"] < performance_threshold - margin)
+)
 
             st.session_state.df = df
             st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Fame_score", "Performance_score", "Is_Biased"]])
