@@ -1,3 +1,9 @@
+# --------------------------------------------------
+# TrueXI App
+# Author: Nihira Khare
+# Date: July 2025
+# --------------------------------------------------
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -181,7 +187,9 @@ if selected_feature == "Main App Flow":
 
             if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
+               
                 st.warning(f"⚠️ Rohit Sharma is the **current captain**, but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+
         # ------------------ Manual Leadership ------------------
         if "final_xi" in st.session_state:
             st.markdown("---")
@@ -216,6 +224,10 @@ if selected_feature == "Main App Flow":
                 else:
                     st.warning("👥 Please select at least 2 players to perform leadership calculation.")
 
+                # --- Signature Footer ---
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+    
 
 # ------------------ XI COHESION SCORE ------------------
 elif selected_feature == "XI Cohesion score":
@@ -360,6 +372,10 @@ elif selected_feature == "XI Cohesion score":
     else:
         st.info("📁 Please upload a CSV file with the required cohesion metrics to continue.")
 
+      # --- Signature Footer ---
+
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
         # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
@@ -424,7 +440,10 @@ elif selected_feature == "Pressure Heatmap XI":
             st.error("❌ Missing required columns: 'Player Name', 'Role', 'Performance_score', 'Pressure_score'")
     else:
         st.info("📁 Please upload a CSV file with required pressure metrics to continue.")
-
+    # --- Signature Footer ---
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+    
 
         # ------------------ TACTICAL ROLE ANALYZER ------------------
 elif selected_feature == "Tactical Role Analyzer":
@@ -555,7 +574,10 @@ elif selected_feature == "Tactical Role Analyzer":
             st.plotly_chart(scatter_plot, use_container_width=True)
     else:
         st.info("📁 Please upload a CSV file with tactical metrics to continue.")
-
+    # --- Signature Footer ---
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+    
 
         # ------------------ IMPACT-WEIGHTED CONTRIBUTION VALIDATOR ------------------
 elif selected_feature == "Impact-weighted index":
@@ -688,7 +710,10 @@ elif selected_feature == "Impact-weighted index":
 
     else:
         st.info("📁 Please upload a CSV file with required columns to begin analysis.")
-
+    # --- Signature Footer ---
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+    
 
         # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
@@ -776,3 +801,7 @@ elif selected_feature == "Role Balance Auditor":
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
     else:
         st.info("📁 Please upload a CSV file with roles to continue.")
+    # --- Signature Footer ---
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+    
