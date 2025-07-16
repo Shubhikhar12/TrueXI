@@ -444,8 +444,7 @@ elif selected_feature == "Pressure Heatmap XI":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
     
-
-        # ------------------ TACTICAL ROLE ANALYZER ------------------
+# ------------------ TACTICAL ROLE ANALYZER ------------------
 elif selected_feature == "Tactical Role Analyzer":
     st.subheader("📝 Tactical Role Analyzer (With Tactical Role Assignment & Insights)")
 
@@ -468,10 +467,19 @@ elif selected_feature == "Tactical Role Analyzer":
 
             # Phase Suitability
             def assign_phase_suitability(row):
-                if row["Role"] == "Batter":
+                if row["Role"] in ["Batter", "WK-Batter"]:
                     if row["PP_SR"] >= 130:
                         return "Powerplay"
                     elif row["DO_SR"] >= 140:
+                        return "Death Overs"
+                    else:
+                        return "Middle Overs"
+                elif row["Role"] == "All-rounder":
+                    bat_score = max(row["PP_SR"], row["DO_SR"], row["MO_SR"])
+                    bowl_score = min(row["PP_ER"], row["DO_ER"], row["MO_ER"])
+                    if bat_score >= 130 or bowl_score <= 7:
+                        return "Powerplay"
+                    elif bat_score >= 140 or bowl_score <= 8:
                         return "Death Overs"
                     else:
                         return "Middle Overs"
@@ -487,10 +495,17 @@ elif selected_feature == "Tactical Role Analyzer":
 
             # Matchup Strength
             def assign_matchup_strength(row):
-                if row["Role"] == "Batter":
+                if row["Role"] in ["Batter", "WK-Batter"]:
                     if row["SR_vs_spin"] >= 135:
                         return "Strong vs Spin"
                     elif row["SR_vs_pace"] >= 140:
+                        return "Strong vs Pace"
+                    else:
+                        return "Average"
+                elif row["Role"] == "All-rounder":
+                    if row["SR_vs_spin"] >= 135 or row["ER_vs_LHB"] <= 7:
+                        return "Strong vs Spin"
+                    elif row["SR_vs_pace"] >= 140 or row["ER_vs_RHB"] <= 7:
                         return "Strong vs Pace"
                     else:
                         return "Average"
@@ -506,13 +521,20 @@ elif selected_feature == "Tactical Role Analyzer":
 
             # Recommended and Backup Tactical Roles
             def assign_roles(row):
-                if row["Role"] == "Batter":
+                if row["Role"] in ["Batter", "WK-Batter"]:
                     if row["PP_SR"] >= 130:
                         return ("Powerplay Aggressor", "Anchor")
                     elif row["DO_SR"] >= 140:
                         return ("Finisher", "Middle Overs Stabilizer")
                     else:
                         return ("Middle Overs Accumulator", "Finisher")
+                elif row["Role"] == "All-rounder":
+                    if row["PP_SR"] >= 130 and row["PP_ER"] <= 7:
+                        return ("Powerplay All-Rounder", "Anchor/Containment")
+                    elif row["DO_SR"] >= 140 and row["DO_ER"] <= 8:
+                        return ("Death Overs All-Rounder", "Middle Overs Utility")
+                    else:
+                        return ("Middle Overs All-Rounder", "Floater")
                 else:
                     if row["PP_ER"] <= 7:
                         return ("Powerplay Swing Bowler", "Containment Spinner")
@@ -525,9 +547,11 @@ elif selected_feature == "Tactical Role Analyzer":
             df["recommended_tactical_role"] = roles.apply(lambda x: x[0])
             df["backup_tactical_role"] = roles.apply(lambda x: x[1])
 
-            # Tactical Role Fit Score (Random)
-            np.random.seed(42)
-            df["tactical_role_fit_score"] = np.random.randint(75, 96, size=len(df))
+            # Tactical Role Fit Score (Improved):
+            df["tactical_role_fit_score"] = round((
+                (df["PP_SR"] + df["MO_SR"] + df["DO_SR"]) / 3 * 0.4 +
+                (100 - (df["PP_ER"] + df["MO_ER"] + df["DO_ER"]) / 3) * 0.6
+            ).clip(75, 95), 2)
 
             # Final Tactical Table
             tactical_df = df[[
@@ -574,10 +598,11 @@ elif selected_feature == "Tactical Role Analyzer":
             st.plotly_chart(scatter_plot, use_container_width=True)
     else:
         st.info("📁 Please upload a CSV file with tactical metrics to continue.")
+
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-    
+
 
         # ------------------ IMPACT-WEIGHTED CONTRIBUTION VALIDATOR ------------------
 elif selected_feature == "Impact-weighted index":
