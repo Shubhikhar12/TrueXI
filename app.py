@@ -114,6 +114,8 @@ if selected_feature == "Main App Flow":
             df["Performance_score"] = scaler.fit_transform(df[["Performance_score_raw"]])
             df["Fame_score"] = scaler.fit_transform(df[["Fame_index"]]) * 0.6 + scaler.fit_transform(df[["Endorsement_score"]]) * 0.4
 
+            df["bias_score"] = df["Fame_score"] - df["Performance_score"]
+
              # 💡 NEW: Fair Bias Detection Logic with Margin
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
@@ -128,7 +130,7 @@ if selected_feature == "Main App Flow":
 )
 
             st.session_state.df = df
-            st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Fame_score", "Performance_score", "Is_Biased"]])
+            st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Fame_score", "Performance_score", "bias_score", "Is_Biased"]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
                              hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
