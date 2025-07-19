@@ -21,6 +21,7 @@ if "step" not in st.session_state:
 if "df" not in st.session_state:
     st.session_state.df = None
 
+
 # ------------------ LOTTIE LOADER ------------------
 def load_lottie_url(url: str):
     try:
@@ -46,13 +47,12 @@ st.markdown("""
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased XI Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
-    "Main App Flow", 
-    "XI Cohesion score", 
+    "Main App Flow",
     "Pressure Heatmap XI", 
     "Tactical Role Analyzer", 
     "Impact-weighted index", 
     "Role Balance Auditor",
-    "Pitch Strategy Tool"
+    "Pitch Adaptive XI"
 ])
 
 # ------------------ HEADER ------------------
@@ -235,155 +235,6 @@ if selected_feature == "Main App Flow":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
     
-
-# ------------------ XI COHESION SCORE ------------------
-elif selected_feature == "XI Cohesion score":
-    st.subheader("📘 XI Cohesion Score Analyzer")
-    cohesion_file = st.file_uploader("📂 Upload CSV with XI Cohesion Columns", type="csv", key="cohesion_upload")
-
-    if cohesion_file:
-        df = pd.read_csv(cohesion_file)
-        df.dropna(inplace=True)
-
-        required_columns = [
-            "Player Name", "Primary skill type", "Batting role", "Bowling role",
-            "Batting position", "SR_PP", "SR_MO", "SR_DO", "Overs bowled_PP",
-            "Overs bowled_MO", "Overs bowled_DO", "Opponent suitability score",
-            "Matchup type", "Fielding rating", "Franchise/National team (for synergy calculation)",
-            "Handedness batting", "Handedness bowling", "Partnership runs",
-            "Wickets in tandem", "Matches played together", "Positional synergy index"
-        ]
-
-        missing = [col for col in required_columns if col not in df.columns]
-        if missing:
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
-        else:
-            df["Primary skill type"].fillna("Unknown", inplace=True)
-            st.session_state['original_df'] = df.copy()
-
-            st.success("✅ File processed with Cohesion Score logic.")
-            st.markdown("Analyze how well your players know and support each other.")
-
-            # Initial cohesion score
-            cohesion_score = round(df["Positional synergy index"].mean(), 2)
-
-            # Display block
-            def display_cohesion_status(score):
-                if score >= 8.5:
-                    color, level, suggestion = "#2ecc71", "🟢 Excellent Cohesion", "✅ Maintain core squad. High familiarity."
-                elif score >= 7.0:
-                    color, level, suggestion = "#f1c40f", "🟡 Good Cohesion", "🔄 Minor role tweaks can help."
-                elif score >= 5.0:
-                    color, level, suggestion = "#e67e22", "🟠 Moderate Cohesion", "⚙ Strengthen partnerships and synergy."
-                else:
-                    color, level, suggestion = "#e74c3c", "🔴 Low Cohesion", "❌ Rework squad or focus on synergy."
-
-                st.markdown(f"""
-                    <div style='background-color: {color}; padding: 20px; border-radius: 10px; color: white; font-size: 20px;'>
-                        <b>{level}</b><br>
-                        Cohesion Score: <b>{score}</b><br>
-                        {suggestion}
-                    </div>
-                """, unsafe_allow_html=True)
-
-            display_cohesion_status(cohesion_score)
-
-            st.markdown("### 📊 XI Cohesion Score Visualization")
-            st.progress(min(cohesion_score / 10, 1.0))
-
-            st.markdown("### 🧩 Player Synergy Table")
-            st.dataframe(df[[
-                "Player Name", "Partnership runs", "Wickets in tandem",
-                "Matches played together", "Positional synergy index"
-            ]])
-
-            fig = px.bar(
-                df, x="Player Name", y="Positional synergy index",
-                color="Primary skill type", title="Synergy Index per Player"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            csv_out = df.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇ Download Cohesion CSV", csv_out, "cohesion_score_output.csv", "text/csv")
-
-            # Manual adjustments
-            if cohesion_score < 5.0:
-                st.warning("📝 Low cohesion detected. You can manually tweak your XI below.")
-
-                with st.expander("🛠 Modify XI Manually"):
-                    # 1️⃣ Remove a player
-                    player_to_remove = st.selectbox("❌ Select player to remove", options=df["Player Name"].unique(), key="remove_player")
-                    if st.button("Remove Selected Player"):
-                        df = df[df["Player Name"] != player_to_remove]
-                        st.session_state['modified_df'] = df.copy()
-                        st.success(f"✅ Removed {player_to_remove} from XI.")
-
-                    st.divider()
-
-                    # 2️⃣ Add a new player
-                    st.markdown("### ➕ Add New Player Manually")
-                    player_name = st.text_input("Player Name", key="new_player_name")
-                    synergy_index = st.slider("Positional synergy index", 0.0, 10.0, 5.0)
-                    matches_together = st.number_input("Matches played together", min_value=0)
-                    partnership_runs = st.number_input("Partnership runs", min_value=0)
-                    wickets_tandem = st.number_input("Wickets in tandem", min_value=0)
-                    skill_type = st.selectbox("Primary skill type", ["Batter", "Bowler", "All-rounder"])
-
-                    if st.button("Add New Player"):
-                        new_player = pd.DataFrame([{
-                            "Player Name": player_name,
-                            "Primary skill type": skill_type,
-                            "Batting role": "N/A", "Bowling role": "N/A", "Batting position": "N/A",
-                            "SR_PP": 0, "SR_MO": 0, "SR_DO": 0,
-                            "Overs bowled_PP": 0, "Overs bowled_MO": 0, "Overs bowled_DO": 0,
-                            "Opponent suitability score": 0, "Matchup type": "N/A",
-                            "Fielding rating": 0, "Franchise/National team (for synergy calculation)": "N/A",
-                            "Handedness batting": "N/A", "Handedness bowling": "N/A",
-                            "Partnership runs": partnership_runs,
-                            "Wickets in tandem": wickets_tandem,
-                            "Matches played together": matches_together,
-                            "Positional synergy index": synergy_index
-                        }])
-
-                        # Add player to existing DataFrame
-                        if 'modified_df' in st.session_state:
-                            st.session_state['modified_df'] = pd.concat([st.session_state['modified_df'], new_player], ignore_index=True)
-                        else:
-                            st.session_state['modified_df'] = pd.concat([df, new_player], ignore_index=True)
-
-                        st.success(f"✅ {player_name} added to the XI.")
-
-                    st.divider()
-
-                    # 3️⃣ Recalculate
-                    if st.button("🔄 Recalculate Cohesion After Changes"):
-                        updated_df = st.session_state.get('modified_df', df)
-                        new_score = round(updated_df["Positional synergy index"].mean(), 2)
-
-                        display_cohesion_status(new_score)
-
-                        st.markdown("### 📊 Updated XI Synergy Table")
-                        st.dataframe(updated_df[[
-                            "Player Name", "Partnership runs", "Wickets in tandem",
-                            "Matches played together", "Positional synergy index"
-                        ]])
-
-                        fig_updated = px.bar(
-                            updated_df, x="Player Name", y="Positional synergy index",
-                            color="Primary skill type", title="Updated Synergy Index per Player"
-                        )
-                        st.plotly_chart(fig_updated, use_container_width=True)
-
-                        csv_out_updated = updated_df.to_csv(index=False).encode("utf-8")
-                        st.download_button("⬇ Download Updated CSV", csv_out_updated, "updated_cohesion_score.csv", "text/csv")
-    else:
-        st.info("📁 Please upload a CSV file with the required cohesion metrics to continue.")
-
-      # --- Signature Footer ---
-
-    st.markdown("---")
-    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
         # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
     st.subheader("🔥 Pressure Heatmap XI")
@@ -838,240 +689,48 @@ elif selected_feature == "Role Balance Auditor":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
- # ------------------ PITCH STRATEGY TOOL ------------------
-elif selected_feature == "Pitch Strategy Tool":
-    import pandas as pd
-    import re
-    import streamlit as st
 
-    st.subheader("🧱 Pitch Type & Match Timing Strategy Tool")
+# ------------------ PITCH ADAPTIVE XI ------------------
+elif selected_feature == "Pitch Adaptive XI":
+    st.subheader("🌍 Pitch Adaptive XI Selector")
+    pitch_file = st.file_uploader("📂 Upload CSV with Player Stats & Roles", type="csv", key="pitch_adaptive_upload")
 
-    # Sidebar Settings
-    st.sidebar.header("🛠 Pitch & Match Settings")
-    pitch_type = st.sidebar.selectbox("Select Pitch Type", ["Red Soil", "Black Soil"], key="pitch_type")
-    match_time = st.sidebar.selectbox("Select Match Time", ["Day", "Night"], key="match_time")
+    pitch_type = st.selectbox("🧱 Select Pitch Type", ["Red Soil", "Black Soil"])
+    match_time = st.selectbox("🕰️ Select Match Timing", ["Day", "Night"])
 
-    # Upload Unbiased XI
-    st.markdown("### 📥 Upload Unbiased XI (CSV)")
-    uploaded_file = st.file_uploader("Upload a CSV file containing your final unbiased XI", type=["csv"])
-    unbiased_xi = None
-    if uploaded_file:
-        unbiased_xi = pd.read_csv(uploaded_file)
-        st.success("✅ Unbiased XI Uploaded Successfully!")
-        st.dataframe(unbiased_xi)
+    if pitch_file:
+        df = pd.read_csv(pitch_file)
+        st.dataframe(df.head(), use_container_width=True)
 
-    # Team Composition Inputs
-    st.markdown("### ⚙️ Current Team Composition")
-    current_pacers = st.number_input("Enter number of pacers in current XI", min_value=0, step=1, key="current_pacers")
-    current_spinners = st.number_input("Enter number of spinners in current XI", min_value=0, step=1, key="current_spinners")
-
-    # Pitch Strategy Logic
-    def get_pitch_strategy(pitch_type, match_time):
+        # Define pitch strategy logic
         if pitch_type == "Red Soil" and match_time == "Day":
-            return {
-                "Batting Strategy": "Bat first",
-                "Spin Strategy": "Early turn – ideal for wrist spinners",
-                "Pace Strategy": "Reverse swing later – stamina crucial",
-                "Key Insight": "Worsens after 30 overs; tough to chase",
-                "Boost Roles": ["Wrist Spinner", "Top-order Anchor"],
-                "Avoid Roles": ["Late Order Finisher", "Off-spinner"],
-                "Pacer Requirement": "At least 3 pacers",
-                "Spinner Requirement": "2 spinners (preferably wrist)"
-            }
+            st.info("Red Soil + Day Match: Prioritize bounce-friendly pacers and spinners for later overs")
+            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Bounce"] >= 7)]
+            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Turn"] >= 6)]
         elif pitch_type == "Red Soil" and match_time == "Night":
-            return {
-                "Batting Strategy": "Chase preferred",
-                "Spin Strategy": "Dew nullifies turn – risky",
-                "Pace Strategy": "Slower balls & yorkers work well",
-                "Key Insight": "Dew helps chasing; spinners ineffective",
-                "Boost Roles": ["Death Overs Pacer", "Finisher"],
-                "Avoid Roles": ["Wrist Spinner", "Finger Spinner"],
-                "Pacer Requirement": "Minimum 3 pacers",
-                "Spinner Requirement": "Max 1 spinner due to dew"
-            }
+            st.info("Red Soil + Night Match: Dew can reduce spin. Favor batting depth and swing bowlers")
+            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Swing"] >= 6)]
+            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Turn"] >= 5)]
         elif pitch_type == "Black Soil" and match_time == "Day":
-            return {
-                "Batting Strategy": "Bat first if dry; pitch slows later",
-                "Spin Strategy": "Slow turn in middle overs",
-                "Pace Strategy": "Cutters grip well",
-                "Key Insight": "Low scoring but competitive",
-                "Boost Roles": ["Left-arm Orthodox", "Strike Rotator"],
-                "Avoid Roles": ["Power Hitter", "Express Pacer"],
-                "Pacer Requirement": "2 pacers with cutters",
-                "Spinner Requirement": "2 spinners preferred"
-            }
-        else:
-            return {
-                "Batting Strategy": "Bat first ideally",
-                "Spin Strategy": "Steady help to off-spinners",
-                "Pace Strategy": "New ball seam; cutters later",
-                "Key Insight": "Under lights: seamers get extra zip",
-                "Boost Roles": ["Swing Bowler", "Middle-order Anchor"],
-                "Avoid Roles": ["Mystery Spinner", "Explosive Opener"],
-                "Pacer Requirement": "3 pacers (include swing bowler)",
-                "Spinner Requirement": "1 off-spinner"
-            }
+            st.info("Black Soil + Day Match: Slow surface favors spin early and slower variations")
+            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Variation"] >= 6)]
+            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Turn"] >= 7)]
+        elif pitch_type == "Black Soil" and match_time == "Night":
+            st.info("Black Soil + Night Match: Dew + slow pitch favors defensive bowling & strong batting")
+            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Control"] >= 6)]
+            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Control"] >= 6)]
 
-    strategy = get_pitch_strategy(pitch_type, match_time)
+        # Top performers by role
+        pacers = pace_filter.sort_values(by=["Economy", "Wickets"], ascending=[True, False]).head(3)
+        spinners = spin_filter.sort_values(by=["Economy", "Wickets"], ascending=[True, False]).head(2)
+        batters = df[df["Role"] == "Batter"].sort_values(by="Avg", ascending=False).head(5)
+        keeper = df[df["Role"] == "Wicket Keeper"].sort_values(by="Avg", ascending=False).head(1)
 
-    def extract_required_number(text):
-        nums = re.findall(r'\d+', text)
-        return int(nums[0]) if nums else 0
+        # Form final XI
+        pitch_xi = pd.concat([pacers, spinners, batters, keeper]).drop_duplicates().head(11)
+        st.success("✅ Pitch Adaptive XI Ready")
+        st.dataframe(pitch_xi, use_container_width=True)
 
-    required_pacers = extract_required_number(strategy["Pacer Requirement"])
-    required_spinners = extract_required_number(strategy["Spinner Requirement"])
-
-    missing_pacers = max(0, required_pacers - current_pacers)
-    missing_spinners = max(0, required_spinners - current_spinners)
-
-    st.subheader("📊 Recommended Tactical Strategy")
-    st.markdown(f"""
-    - 🏏 Batting Strategy: {strategy['Batting Strategy']}
-    - 🌀 Spin Bowling Strategy: {strategy['Spin Strategy']}
-    - 💥 Pace Bowling Strategy: {strategy['Pace Strategy']}
-    - 📌 Insight: {strategy['Key Insight']}
-    - 🧮 Required Pacers: {required_pacers} | You have: {current_pacers} | ❗Missing: {missing_pacers}
-    - 🎯 Required Spinners: {required_spinners} | You have: {current_spinners} | ❗Missing: {missing_spinners}
-    """)
-
-    with st.expander("📌 Role Impact Based on Conditions"):
-        st.markdown(f"🔼 Boost These Roles: {', '.join(strategy['Boost Roles'])}")
-        st.markdown(f"🔽 Avoid These Roles: {', '.join(strategy['Avoid Roles'])}")
-
-    # Manual Bowler Addition
-    st.markdown("### 🧮 Manually Add a Missing Bowler")
-    role_to_add = st.selectbox("Which role are you trying to fill?", ["Pacer", "Spinner"])
-    name = st.text_input("Bowler Name")
-    venue = st.text_input("Venue")
-    wickets = st.number_input("Total Wickets at this Venue", min_value=0)
-    economy = st.number_input("Economy Rate at this Venue", min_value=0.0, step=0.1, format="%.2f")
-    add_success = False
-
-    if st.button("📌 Evaluate Bowler Fit"):
-        if role_to_add == "Pacer" and economy <= 7.5 and wickets >= 1:
-            st.success(f"✅ {name} is a good fit for this pitch and match conditions at {venue}.")
-            add_success = True
-        elif role_to_add == "Spinner" and economy <= 6.5 and wickets >= 1:
-            st.success(f"✅ {name} fits well as a spinner for {venue} under current strategy.")
-            add_success = True
-        else:
-            st.warning(f"⚠️ {name} may not be effective based on stats at {venue}.")
-
-    # Bowler vs Bowler Head-to-Head
-    st.markdown("### 🆚 Bowler vs Bowler: Head-to-Head Fit")
-    st.info("Compare two bowlers and automatically update XI based on better stats.")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        bowler1_name = st.text_input("Bowler 1 Name")
-        bowler1_wickets = st.number_input("Bowler 1 - Wickets at Venue", min_value=0, key="b1_wickets")
-        bowler1_economy = st.number_input("Bowler 1 - Economy at Venue", min_value=0.0, step=0.1, format="%.2f", key="b1_eco")
-        bowler1_role = st.selectbox("Bowler 1 Role", ["Pacer", "Spinner"], key="b1_role")
-
-    with col2:
-        bowler2_name = st.text_input("Bowler 2 Name")
-        bowler2_wickets = st.number_input("Bowler 2 - Wickets at Venue", min_value=0, key="b2_wickets")
-        bowler2_economy = st.number_input("Bowler 2 - Economy at Venue", min_value=0.0, step=0.1, format="%.2f", key="b2_eco")
-        bowler2_role = st.selectbox("Bowler 2 Role", ["Pacer", "Spinner"], key="b2_role")
-
-    if st.button("⚔ Compare Bowlers"):
-        def bowler_score(wickets, economy, role):
-            return wickets * (2.5 if role == "Spinner" else 2) - economy
-
-        score1 = bowler_score(bowler1_wickets, bowler1_economy, bowler1_role)
-        score2 = bowler_score(bowler2_wickets, bowler2_economy, bowler2_role)
-
-        if score1 > score2:
-            better_bowler = {
-                "Player Name": bowler1_name,
-                "Role": bowler1_role,
-                "Venue": venue,
-                "Wickets": bowler1_wickets,
-                "Economy": bowler1_economy
-            }
-            lesser_name = bowler2_name
-            st.success(f"✅ {bowler1_name} is better suited than {bowler2_name}")
-        elif score2 > score1:
-            better_bowler = {
-                "Player Name": bowler2_name,
-                "Role": bowler2_role,
-                "Venue": venue,
-                "Wickets": bowler2_wickets,
-                "Economy": bowler2_economy
-            }
-            lesser_name = bowler1_name
-            st.success(f"✅ {bowler2_name} is better suited than {bowler1_name}")
-        else:
-            st.info("⚖️ Both bowlers perform equally well.")
-            better_bowler, lesser_name = None, None
-
-        if unbiased_xi is not None and better_bowler:
-            if lesser_name in unbiased_xi["Player Name"].values:
-                unbiased_xi = unbiased_xi[unbiased_xi["Player Name"] != lesser_name]
-                st.warning(f"❌ Removed {lesser_name} from Unbiased XI")
-
-            if better_bowler["Player Name"] not in unbiased_xi["Player Name"].values:
-                unbiased_xi = pd.concat([unbiased_xi, pd.DataFrame([better_bowler])], ignore_index=True)
-                st.success(f"✅ Added {better_bowler['Player Name']} to Unbiased XI")
-
-    # Adjust XI: Remove extras, Add manual bowler
-    if unbiased_xi is not None:
-        pacers = unbiased_xi[unbiased_xi["Role"].str.contains("Pacer", case=False)]
-        spinners = unbiased_xi[unbiased_xi["Role"].str.contains("Spinner", case=False)]
-
-        extra_pacers = pacers.shape[0] - required_pacers
-        extra_spinners = spinners.shape[0] - required_spinners
-
-        st.markdown("### 🧾 Unbiased XI Evaluation")
-        st.markdown(f"- Pacers in XI: {pacers.shape[0]} / Required: {required_pacers}")
-        st.markdown(f"- Spinners in XI: {spinners.shape[0]} / Required: {required_spinners}")
-
-        if extra_pacers > 0:
-            st.warning(f"❗ Too many pacers. Remove {extra_pacers}.")
-            remove_pacer = st.multiselect("Remove pacer(s)", pacers["Player Name"].tolist(), max_selections=extra_pacers, key="remove_pacer")
-            unbiased_xi = unbiased_xi[~unbiased_xi["Player Name"].isin(remove_pacer)]
-
-        if extra_spinners > 0:
-            st.warning(f"❗ Too many spinners. Remove {extra_spinners}.")
-            remove_spinner = st.multiselect("Remove spinner(s)", spinners["Player Name"].tolist(), max_selections=extra_spinners, key="remove_spinner")
-            unbiased_xi = unbiased_xi[~unbiased_xi["Player Name"].isin(remove_spinner)]
-
-        if add_success and name:
-            new_player = pd.DataFrame([{
-                "Player Name": name,
-                "Role": role_to_add,
-                "Venue": venue,
-                "Wickets": wickets,
-                "Economy": economy
-            }])
-            unbiased_xi = pd.concat([unbiased_xi, new_player], ignore_index=True)
-            st.success(f"✅ {name} added to Updated XI.")
-
-        # Show final XI
-        st.markdown("### 📋 Updated Unbiased XI")
-        st.dataframe(unbiased_xi)
-
-        # Download Final XI
-        csv_out = unbiased_xi.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇ Download Updated XI", data=csv_out, file_name="updated_unbiased_xi.csv", mime="text/csv")
-
-    # Pitch Strategy Download
-    result_df = pd.DataFrame({
-        "Pitch Type": [pitch_type],
-        "Match Time": [match_time],
-        "Batting Strategy": [strategy["Batting Strategy"]],
-        "Spin Strategy": [strategy["Spin Strategy"]],
-        "Pace Strategy": [strategy["Pace Strategy"]],
-        "Key Insight": [strategy["Key Insight"]],
-        "Pacer Requirement": [strategy["Pacer Requirement"]],
-        "Spinner Requirement": [strategy["Spinner Requirement"]],
-        "Boost Roles": [", ".join(strategy["Boost Roles"])],
-        "Avoid Roles": [", ".join(strategy["Avoid Roles"])]
-    })
-    csv_data = result_df.to_csv(index=False).encode("utf-8")
-    st.download_button("⬇ Download Pitch Strategy CSV", data=csv_data, file_name="pitch_strategy_report.csv", mime="text/csv")
-
-    # Signature
-    st.markdown("---")
-    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+        # Download option
+        csv_pitch = pitch_xi.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Pitch Adaptive XI", data=csv_pitch, file_name='Pitch_Adaptive_XI.csv', mime='text/csv')
