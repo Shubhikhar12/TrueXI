@@ -51,7 +51,8 @@ selected_feature = st.sidebar.radio("Select Feature", [
     "Pressure Heatmap XI", 
     "Tactical Role Analyzer", 
     "Impact-weighted index", 
-    "Role Balance Auditor"
+    "Role Balance Auditor",
+    "Pitch Strategy Tool"
 ])
 
 # ------------------ HEADER ------------------
@@ -62,6 +63,7 @@ if lottie_cricket:
 
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
+
 
     # Step 0: Upload File
     if st.session_state.step == 0:
@@ -221,6 +223,9 @@ if selected_feature == "Main App Flow":
                         "Player Name", "Role", "Performance_score", "Fame_score",
                         "Leadership_Score", "Captain", "Vice_Captain"
                     ]])
+                     # ✅ Download button for manually selected leadership
+                    manual_csv = manual_df.to_csv(index=False).encode("utf-8")
+                    st.download_button("⬇ Download Manual Captain-Vice CSV", manual_csv, "manual_captain_vice.csv", "text/csv")
                 else:
                     st.warning("👥 Please select at least 2 players to perform leadership calculation.")
 
@@ -604,7 +609,7 @@ elif selected_feature == "Tactical Role Analyzer":
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
 
-        # ------------------ IMPACT-WEIGHTED CONTRIBUTION VALIDATOR ------------------
+        #  ------------------ IMPACT-WEIGHTED CONTRIBUTION VALIDATOR ------------------
 elif selected_feature == "Impact-weighted index":
     st.subheader("📊 Impact-Weighted Contribution Validator")
 
@@ -735,6 +740,7 @@ elif selected_feature == "Impact-weighted index":
 
     else:
         st.info("📁 Please upload a CSV file with required columns to begin analysis.")
+    
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
@@ -829,4 +835,241 @@ elif selected_feature == "Role Balance Auditor":
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-    
+
+ # ------------------ PITCH STRATEGY TOOL ------------------
+elif selected_feature == "Pitch Strategy Tool":
+    import pandas as pd
+    import re
+    import streamlit as st
+
+    st.subheader("🧱 Pitch Type & Match Timing Strategy Tool")
+
+    # Sidebar Settings
+    st.sidebar.header("🛠 Pitch & Match Settings")
+    pitch_type = st.sidebar.selectbox("Select Pitch Type", ["Red Soil", "Black Soil"], key="pitch_type")
+    match_time = st.sidebar.selectbox("Select Match Time", ["Day", "Night"], key="match_time")
+
+    # Upload Unbiased XI
+    st.markdown("### 📥 Upload Unbiased XI (CSV)")
+    uploaded_file = st.file_uploader("Upload a CSV file containing your final unbiased XI", type=["csv"])
+    unbiased_xi = None
+    if uploaded_file:
+        unbiased_xi = pd.read_csv(uploaded_file)
+        st.success("✅ Unbiased XI Uploaded Successfully!")
+        st.dataframe(unbiased_xi)
+
+    # Team Composition Inputs
+    st.markdown("### ⚙️ Current Team Composition")
+    current_pacers = st.number_input("Enter number of pacers in current XI", min_value=0, step=1, key="current_pacers")
+    current_spinners = st.number_input("Enter number of spinners in current XI", min_value=0, step=1, key="current_spinners")
+
+    # Pitch Strategy Logic
+    def get_pitch_strategy(pitch_type, match_time):
+        if pitch_type == "Red Soil" and match_time == "Day":
+            return {
+                "Batting Strategy": "Bat first",
+                "Spin Strategy": "Early turn – ideal for wrist spinners",
+                "Pace Strategy": "Reverse swing later – stamina crucial",
+                "Key Insight": "Worsens after 30 overs; tough to chase",
+                "Boost Roles": ["Wrist Spinner", "Top-order Anchor"],
+                "Avoid Roles": ["Late Order Finisher", "Off-spinner"],
+                "Pacer Requirement": "At least 3 pacers",
+                "Spinner Requirement": "2 spinners (preferably wrist)"
+            }
+        elif pitch_type == "Red Soil" and match_time == "Night":
+            return {
+                "Batting Strategy": "Chase preferred",
+                "Spin Strategy": "Dew nullifies turn – risky",
+                "Pace Strategy": "Slower balls & yorkers work well",
+                "Key Insight": "Dew helps chasing; spinners ineffective",
+                "Boost Roles": ["Death Overs Pacer", "Finisher"],
+                "Avoid Roles": ["Wrist Spinner", "Finger Spinner"],
+                "Pacer Requirement": "Minimum 3 pacers",
+                "Spinner Requirement": "Max 1 spinner due to dew"
+            }
+        elif pitch_type == "Black Soil" and match_time == "Day":
+            return {
+                "Batting Strategy": "Bat first if dry; pitch slows later",
+                "Spin Strategy": "Slow turn in middle overs",
+                "Pace Strategy": "Cutters grip well",
+                "Key Insight": "Low scoring but competitive",
+                "Boost Roles": ["Left-arm Orthodox", "Strike Rotator"],
+                "Avoid Roles": ["Power Hitter", "Express Pacer"],
+                "Pacer Requirement": "2 pacers with cutters",
+                "Spinner Requirement": "2 spinners preferred"
+            }
+        else:
+            return {
+                "Batting Strategy": "Bat first ideally",
+                "Spin Strategy": "Steady help to off-spinners",
+                "Pace Strategy": "New ball seam; cutters later",
+                "Key Insight": "Under lights: seamers get extra zip",
+                "Boost Roles": ["Swing Bowler", "Middle-order Anchor"],
+                "Avoid Roles": ["Mystery Spinner", "Explosive Opener"],
+                "Pacer Requirement": "3 pacers (include swing bowler)",
+                "Spinner Requirement": "1 off-spinner"
+            }
+
+    strategy = get_pitch_strategy(pitch_type, match_time)
+
+    def extract_required_number(text):
+        nums = re.findall(r'\d+', text)
+        return int(nums[0]) if nums else 0
+
+    required_pacers = extract_required_number(strategy["Pacer Requirement"])
+    required_spinners = extract_required_number(strategy["Spinner Requirement"])
+
+    missing_pacers = max(0, required_pacers - current_pacers)
+    missing_spinners = max(0, required_spinners - current_spinners)
+
+    st.subheader("📊 Recommended Tactical Strategy")
+    st.markdown(f"""
+    - 🏏 Batting Strategy: {strategy['Batting Strategy']}
+    - 🌀 Spin Bowling Strategy: {strategy['Spin Strategy']}
+    - 💥 Pace Bowling Strategy: {strategy['Pace Strategy']}
+    - 📌 Insight: {strategy['Key Insight']}
+    - 🧮 Required Pacers: {required_pacers} | You have: {current_pacers} | ❗Missing: {missing_pacers}
+    - 🎯 Required Spinners: {required_spinners} | You have: {current_spinners} | ❗Missing: {missing_spinners}
+    """)
+
+    with st.expander("📌 Role Impact Based on Conditions"):
+        st.markdown(f"🔼 Boost These Roles: {', '.join(strategy['Boost Roles'])}")
+        st.markdown(f"🔽 Avoid These Roles: {', '.join(strategy['Avoid Roles'])}")
+
+    # Manual Bowler Addition
+    st.markdown("### 🧮 Manually Add a Missing Bowler")
+    role_to_add = st.selectbox("Which role are you trying to fill?", ["Pacer", "Spinner"])
+    name = st.text_input("Bowler Name")
+    venue = st.text_input("Venue")
+    wickets = st.number_input("Total Wickets at this Venue", min_value=0)
+    economy = st.number_input("Economy Rate at this Venue", min_value=0.0, step=0.1, format="%.2f")
+    add_success = False
+
+    if st.button("📌 Evaluate Bowler Fit"):
+        if role_to_add == "Pacer" and economy <= 7.5 and wickets >= 1:
+            st.success(f"✅ {name} is a good fit for this pitch and match conditions at {venue}.")
+            add_success = True
+        elif role_to_add == "Spinner" and economy <= 6.5 and wickets >= 1:
+            st.success(f"✅ {name} fits well as a spinner for {venue} under current strategy.")
+            add_success = True
+        else:
+            st.warning(f"⚠️ {name} may not be effective based on stats at {venue}.")
+
+    # Bowler vs Bowler Head-to-Head
+    st.markdown("### 🆚 Bowler vs Bowler: Head-to-Head Fit")
+    st.info("Compare two bowlers and automatically update XI based on better stats.")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        bowler1_name = st.text_input("Bowler 1 Name")
+        bowler1_wickets = st.number_input("Bowler 1 - Wickets at Venue", min_value=0, key="b1_wickets")
+        bowler1_economy = st.number_input("Bowler 1 - Economy at Venue", min_value=0.0, step=0.1, format="%.2f", key="b1_eco")
+        bowler1_role = st.selectbox("Bowler 1 Role", ["Pacer", "Spinner"], key="b1_role")
+
+    with col2:
+        bowler2_name = st.text_input("Bowler 2 Name")
+        bowler2_wickets = st.number_input("Bowler 2 - Wickets at Venue", min_value=0, key="b2_wickets")
+        bowler2_economy = st.number_input("Bowler 2 - Economy at Venue", min_value=0.0, step=0.1, format="%.2f", key="b2_eco")
+        bowler2_role = st.selectbox("Bowler 2 Role", ["Pacer", "Spinner"], key="b2_role")
+
+    if st.button("⚔ Compare Bowlers"):
+        def bowler_score(wickets, economy, role):
+            return wickets * (2.5 if role == "Spinner" else 2) - economy
+
+        score1 = bowler_score(bowler1_wickets, bowler1_economy, bowler1_role)
+        score2 = bowler_score(bowler2_wickets, bowler2_economy, bowler2_role)
+
+        if score1 > score2:
+            better_bowler = {
+                "Player Name": bowler1_name,
+                "Role": bowler1_role,
+                "Venue": venue,
+                "Wickets": bowler1_wickets,
+                "Economy": bowler1_economy
+            }
+            lesser_name = bowler2_name
+            st.success(f"✅ {bowler1_name} is better suited than {bowler2_name}")
+        elif score2 > score1:
+            better_bowler = {
+                "Player Name": bowler2_name,
+                "Role": bowler2_role,
+                "Venue": venue,
+                "Wickets": bowler2_wickets,
+                "Economy": bowler2_economy
+            }
+            lesser_name = bowler1_name
+            st.success(f"✅ {bowler2_name} is better suited than {bowler1_name}")
+        else:
+            st.info("⚖️ Both bowlers perform equally well.")
+            better_bowler, lesser_name = None, None
+
+        if unbiased_xi is not None and better_bowler:
+            if lesser_name in unbiased_xi["Player Name"].values:
+                unbiased_xi = unbiased_xi[unbiased_xi["Player Name"] != lesser_name]
+                st.warning(f"❌ Removed {lesser_name} from Unbiased XI")
+
+            if better_bowler["Player Name"] not in unbiased_xi["Player Name"].values:
+                unbiased_xi = pd.concat([unbiased_xi, pd.DataFrame([better_bowler])], ignore_index=True)
+                st.success(f"✅ Added {better_bowler['Player Name']} to Unbiased XI")
+
+    # Adjust XI: Remove extras, Add manual bowler
+    if unbiased_xi is not None:
+        pacers = unbiased_xi[unbiased_xi["Role"].str.contains("Pacer", case=False)]
+        spinners = unbiased_xi[unbiased_xi["Role"].str.contains("Spinner", case=False)]
+
+        extra_pacers = pacers.shape[0] - required_pacers
+        extra_spinners = spinners.shape[0] - required_spinners
+
+        st.markdown("### 🧾 Unbiased XI Evaluation")
+        st.markdown(f"- Pacers in XI: {pacers.shape[0]} / Required: {required_pacers}")
+        st.markdown(f"- Spinners in XI: {spinners.shape[0]} / Required: {required_spinners}")
+
+        if extra_pacers > 0:
+            st.warning(f"❗ Too many pacers. Remove {extra_pacers}.")
+            remove_pacer = st.multiselect("Remove pacer(s)", pacers["Player Name"].tolist(), max_selections=extra_pacers, key="remove_pacer")
+            unbiased_xi = unbiased_xi[~unbiased_xi["Player Name"].isin(remove_pacer)]
+
+        if extra_spinners > 0:
+            st.warning(f"❗ Too many spinners. Remove {extra_spinners}.")
+            remove_spinner = st.multiselect("Remove spinner(s)", spinners["Player Name"].tolist(), max_selections=extra_spinners, key="remove_spinner")
+            unbiased_xi = unbiased_xi[~unbiased_xi["Player Name"].isin(remove_spinner)]
+
+        if add_success and name:
+            new_player = pd.DataFrame([{
+                "Player Name": name,
+                "Role": role_to_add,
+                "Venue": venue,
+                "Wickets": wickets,
+                "Economy": economy
+            }])
+            unbiased_xi = pd.concat([unbiased_xi, new_player], ignore_index=True)
+            st.success(f"✅ {name} added to Updated XI.")
+
+        # Show final XI
+        st.markdown("### 📋 Updated Unbiased XI")
+        st.dataframe(unbiased_xi)
+
+        # Download Final XI
+        csv_out = unbiased_xi.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇ Download Updated XI", data=csv_out, file_name="updated_unbiased_xi.csv", mime="text/csv")
+
+    # Pitch Strategy Download
+    result_df = pd.DataFrame({
+        "Pitch Type": [pitch_type],
+        "Match Time": [match_time],
+        "Batting Strategy": [strategy["Batting Strategy"]],
+        "Spin Strategy": [strategy["Spin Strategy"]],
+        "Pace Strategy": [strategy["Pace Strategy"]],
+        "Key Insight": [strategy["Key Insight"]],
+        "Pacer Requirement": [strategy["Pacer Requirement"]],
+        "Spinner Requirement": [strategy["Spinner Requirement"]],
+        "Boost Roles": [", ".join(strategy["Boost Roles"])],
+        "Avoid Roles": [", ".join(strategy["Avoid Roles"])]
+    })
+    csv_data = result_df.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇ Download Pitch Strategy CSV", data=csv_data, file_name="pitch_strategy_report.csv", mime="text/csv")
+
+    # Signature
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
