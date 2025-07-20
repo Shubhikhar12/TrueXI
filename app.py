@@ -13,7 +13,7 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
 # ------------------ PAGE CONFIG ------------------
-st.set_page_config(page_title="Unbiased XI Selector", layout="wide")
+st.set_page_config(page_title="TrueXI Selector", layout="wide")
 
 # ------------------ SESSION INIT ------------------
 if "step" not in st.session_state:
@@ -37,12 +37,86 @@ lottie_cricket = load_lottie_url("https://assets7.lottiefiles.com/packages/lf20_
 # ------------------ STYLING ------------------
 st.markdown("""
     <style>
-        .stApp { background-color: #0d1b2a; color: white; }
-        h1, h4 { color: #fcbf49; }
-        .stButton > button { background-color: #1d3557; color: white; font-weight: bold; border-radius: 10px; padding: 10px 20px; }
-        .stDownloadButton > button { background-color: #2a9d8f; color: white; }
+        /* Background and text */
+        .stApp {
+            background-color: #0b132b;  /* Dark pitch color */
+            color: #ffffff;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        /* Title and subtitle */
+        h1, h2, h3, h4 {
+            color: #ffd700;  /* Cricket golden */
+            text-align: center;
+        }
+
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #1c2541;
+            color: white;
+            border-right: 2px solid #2a9d8f;
+        }
+
+        /* Sidebar titles */
+        .css-1d391kg {  /* title */
+            color: #fcbf49 !important;
+        }
+
+        .css-1cpxqw2 {  /* sidebar radio buttons */
+            color: #ffffff !important;
+        }
+
+        /* Buttons */
+        .stButton > button {
+            background-color: #2a9d8f;
+            color: white;
+            font-weight: bold;
+            border-radius: 12px;
+            padding: 10px 20px;
+            transition: background-color 0.3s ease;
+        }
+
+        .stButton > button:hover {
+            background-color: #21867a;
+        }
+
+        /* Download buttons */
+        .stDownloadButton > button {
+            background-color: #e63946;
+            color: white;
+            font-weight: bold;
+            border-radius: 12px;
+        }
+
+        .stDownloadButton > button:hover {
+            background-color: #d62828;
+        }
+
+        /* Info boxes, warnings, etc. */
+        .stAlert {
+            border-radius: 10px;
+        }
+
+        /* Tables */
+        .stDataFrame {
+            border: 2px solid #2a9d8f;
+            border-radius: 12px
+        }
+
+        /* Input widgets */
+        .stTextInput, .stSelectbox, .stSlider {
+            border-radius: 10px !important;
+        }
+
+        /* Center Lottie Animation */
+        iframe[title="cricket_header"] {
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
     </style>
 """, unsafe_allow_html=True)
+
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased XI Tools")
@@ -54,7 +128,10 @@ selected_feature = st.sidebar.radio("Select Feature", [
 ])
 
 # ------------------ HEADER ------------------
-st.markdown("<h1 style='text-align: center;'>🏏 Unbiased XI Selector App</h1>", unsafe_allow_html=True)
+
+st.image("app logo.jpg", width=150)  # Add your logo here
+
+st.markdown("<h1 style='text-align: center;'>🏏 TrueXI Selector App</h1>", unsafe_allow_html=True)
 st.markdown("<h4 style='text-align: center;'>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_allow_html=True)
 if lottie_cricket:
     st_lottie(lottie_cricket, height=150, key="cricket_header")
