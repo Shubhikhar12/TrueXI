@@ -50,7 +50,7 @@ selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
     "Pressure Heatmap XI",  
     "Role Balance Auditor",
-    "Pitch Adaptive XI"
+    "Pitch Adaptive XI Auditor"
 ])
 
 # ------------------ HEADER ------------------
@@ -390,48 +390,123 @@ elif selected_feature == "Role Balance Auditor":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
+# ------------------ PITCH ADAPTIVE XI AUDITOR ------------------
+elif selected_feature == "Pitch Adaptive XI Auditor":
+    import pandas as pd
+    import streamlit as st
 
-# ------------------ PITCH ADAPTIVE XI ------------------
-elif selected_feature == "Pitch Adaptive XI":
-    st.subheader("🌍 Pitch Adaptive XI Selector")
-    pitch_file = st.file_uploader("📂 Upload CSV with Player Stats & Roles", type="csv", key="pitch_adaptive_upload")
+    st.subheader("🌱 Pitch Adaptive XI Auditor (Upload-Based)")
 
-    pitch_type = st.selectbox("🧱 Select Pitch Type", ["Red Soil", "Black Soil"])
-    match_time = st.selectbox("🕰️ Select Match Timing", ["Day", "Night"])
+    uploaded_file = st.file_uploader("📁 Upload Unbiased XI CSV", type="csv")
 
-    if pitch_file:
-        df = pd.read_csv(pitch_file)
-        st.dataframe(df.head(), use_container_width=True)
+    # Venue modifiers
+    venue_modifiers = {
+        "Red Soil": {
+            "Day": {"opener": 1.0, "anchor": 1.0, "spinner": 1.1, "pacer": 0.9},
+            "Night": {"opener": 0.9, "anchor": 0.9, "spinner": 1.2, "pacer": 1.0}
+        },
+        "Black Soil": {
+            "Day": {"opener": 1.0, "anchor": 1.0, "spinner": 0.9, "pacer": 1.2},
+            "Night": {"opener": 0.8, "anchor": 0.8, "spinner": 1.0, "pacer": 1.3}
+        }
+    }
 
-        # Define pitch strategy logic
-        if pitch_type == "Red Soil" and match_time == "Day":
-            st.info("Red Soil + Day Match: Prioritize bounce-friendly pacers and spinners for later overs")
-            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Bounce"] >= 7)]
-            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Turn"] >= 6)]
-        elif pitch_type == "Red Soil" and match_time == "Night":
-            st.info("Red Soil + Night Match: Dew can reduce spin. Favor batting depth and swing bowlers")
-            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Swing"] >= 6)]
-            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Turn"] >= 5)]
-        elif pitch_type == "Black Soil" and match_time == "Day":
-            st.info("Black Soil + Day Match: Slow surface favors spin early and slower variations")
-            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Variation"] >= 6)]
-            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Turn"] >= 7)]
-        elif pitch_type == "Black Soil" and match_time == "Night":
-            st.info("Black Soil + Night Match: Dew + slow pitch favors defensive bowling & strong batting")
-            pace_filter = df[(df["Bowling Type"].str.contains("Pace")) & (df["Control"] >= 6)]
-            spin_filter = df[(df["Bowling Type"].str.contains("Spin")) & (df["Control"] >= 6)]
+    # Base scores per role
+    base_scores = {
+        "opener": 7,
+        "anchor": 7,
+        "spinner": 7,
+        "pacer": 7,
+        "finisher": 6
+    }
 
-        # Top performers by role
-        pacers = pace_filter.sort_values(by=["Economy", "Wickets"], ascending=[True, False]).head(3)
-        spinners = spin_filter.sort_values(by=["Economy", "Wickets"], ascending=[True, False]).head(2)
-        batters = df[df["Role"] == "Batter"].sort_values(by="Avg", ascending=False).head(5)
-        keeper = df[df["Role"] == "Wicket Keeper"].sort_values(by="Avg", ascending=False).head(1)
+    # Skill modifiers per soil
+    skill_modifiers = {
+        "Red Soil": {
+            "Swing": 1.0, "Yorker": 1.0, "Power Hitter": 0.5, "Wrist Spin": 0.2, "Cutter": 0.3
+        },
+        "Black Soil": {
+            "Wrist Spin": 1.0, "Off Spin": 0.9, "Cutter": 0.8, "Power Hitter": 0.5, "Yorker": 0.4
+        }
+    }
 
-        # Form final XI
-        pitch_xi = pd.concat([pacers, spinners, batters, keeper]).drop_duplicates().head(11)
-        st.success("✅ Pitch Adaptive XI Ready")
-        st.dataframe(pitch_xi, use_container_width=True)
+    # Score calculation
+    def calculate_pitch_score_and_suitability(row, soil, timing):
+        role = row["Primary Role"].lower()
+        adaptability = row.get("Adaptability Score", 5)
+        skill = row.get("Skill", "").strip()
 
-        # Download option
-        csv_pitch = pitch_xi.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Pitch Adaptive XI", data=csv_pitch, file_name='Pitch_Adaptive_XI.csv', mime='text/csv')
+        base_score = base_scores.get(role, 6)
+        role_modifier = venue_modifiers[soil][timing].get(role, 1.0)
+        skill_bonus = skill_modifiers[soil].get(skill, 0.0)
+
+        final_score = (base_score * role_modifier) + (0.2 * adaptability) + skill_bonus
+        threshold = 7.5 if soil == "Black Soil" and timing == "Night" else 7.0
+        suitability = "✅ Best Suited" if final_score >= threshold else "❌ Not Best Suited"
+
+        return pd.Series([round(final_score, 2), suitability])
+
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+
+        if "Adaptability Score" not in df.columns:
+            df["Adaptability Score"] = 5
+        if "Skill" not in df.columns:
+            df["Skill"] = ""
+
+        soil = st.selectbox("🧱 Choose Soil Type", ["Red Soil", "Black Soil"])
+        timing = st.selectbox("⏰ Choose Match Timing", ["Day", "Night"])
+
+        df[["Pitch Score", "Pitch Suitability"]] = df.apply(
+            lambda row: calculate_pitch_score_and_suitability(row, soil, timing), axis=1
+        )
+
+        st.subheader("📊 Unbiased XI with Pitch Score & Suitability")
+        st.dataframe(df)
+
+        # Initial download
+        csv_original = df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download Original CSV", data=csv_original, file_name="Pitch_Adaptive_XI_Original.csv", mime="text/csv")
+
+        # --- Manual Replacement Logic ---
+        unsuitable_players = df[df["Pitch Suitability"] == "❌ Not Best Suited"]
+
+        replacements_made = False
+
+        if not unsuitable_players.empty:
+            st.warning("⚠️ Some players are not best suited. Replace below if needed:")
+
+            for idx, row in unsuitable_players.iterrows():
+                with st.expander(f"🔁 Replace {row['Player Name']} ({row['Primary Role']})"):
+                    new_name = st.text_input(f"Name", key=f"name_{idx}")
+                    new_role = st.selectbox("Primary Role", options=list(base_scores.keys()), key=f"role_{idx}")
+                    new_adapt = st.slider("Adaptability Score", 1, 10, 5, key=f"adapt_{idx}")
+                    new_skill = st.selectbox("Skill", options=[""] + list(skill_modifiers[soil].keys()), key=f"skill_{idx}")
+                    if st.button("➕ Add Replacement", key=f"add_{idx}") and new_name:
+                        # Create and calculate new player
+                        new_row = pd.DataFrame([{
+                            "Player Name": new_name,
+                            "Primary Role": new_role.title(),
+                            "Adaptability Score": new_adapt,
+                            "Skill": new_skill
+                        }])
+                        new_row[["Pitch Score", "Pitch Suitability"]] = new_row.apply(
+                            lambda r: calculate_pitch_score_and_suitability(r, soil, timing), axis=1
+                        )
+                        df.loc[idx] = new_row.iloc[0]
+                        st.success(f"{new_name} added as replacement for {row['Player Name']}")
+                        replacements_made = True
+
+        # Final Updated XI
+        st.subheader("✅ Final Pitch Adaptive XI")
+        st.dataframe(df)
+
+        csv_final = df.to_csv(index=False).encode("utf-8")
+        st.download_button("📥 Download Final Updated CSV", data=csv_final, file_name="Pitch_Adaptive_XI_Updated.csv", mime="text/csv")
+
+        # Chart
+        st.subheader("📈 Pitch Score Bar Chart")
+        st.bar_chart(df.set_index("Player Name")["Pitch Score"])
+
+    else:
+        st.info("Please upload your Unbiased XI CSV file to begin.")
