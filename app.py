@@ -158,8 +158,7 @@ if selected_feature == "Main App Flow":
             st.subheader("📋 Uploaded Player Data")
             format_filter = st.selectbox("Filter by Format", options=df["Format"].unique())
             role_filter = st.multiselect("Filter by Role", options=df["Role"].unique(), default=df["Role"].unique())
-            min_matches = st.slider("Minimum Matches", 0, 50, 0)
-            filtered_df = df[(df["Format"] == format_filter) & (df["Role"].isin(role_filter)) & (df["Matches"] >= min_matches)]
+            filtered_df = df[(df["Format"] == format_filter) & (df["Role"].isin(role_filter))]
             st.dataframe(filtered_df)
 
         # Detect Biased Players
@@ -231,7 +230,7 @@ if selected_feature == "Main App Flow":
                 if not wk_all.empty:
                     wk_all["Leadership_Score"] = 0.6 * wk_all["Performance_score"] + 0.4 * wk_all["Fame_score"]
                     wk_batter = wk_all.nlargest(1, "Leadership_Score")
-                    st.warning(f"⚠️ No unbiased WK-Batter found. Selected best available from full dataset: {wk_batter.iloc[0]['Player Name']}")
+                    st.warning(f"⚠ No unbiased WK-Batter found. Selected best available from full dataset: {wk_batter.iloc[0]['Player Name']}")
                 else:
                     st.error("❌ No WK-Batter found at all in the dataset. Please include at least one.")
                       # Avoid running below code
@@ -261,18 +260,18 @@ if selected_feature == "Main App Flow":
             csv = final_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
 
-            st.success(f"🏏 **Recommended Captain:** {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
-            st.info(f"🥢 **Vice-Captain:** {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
+            st.success(f"🏏 *Recommended Captain:* {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
+            st.info(f"🥢 *Vice-Captain:* {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
 
             if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
                
-                st.warning(f"⚠️ Rohit Sharma is the **current captain**, but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+                st.warning(f"⚠ Rohit Sharma is the *current captain, but based on data, **{captain['Player Name']}* has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
 
         # ------------------ Manual Leadership ------------------
         if "final_xi" in st.session_state:
             st.markdown("---")
-            st.subheader("✍️ Select Future Leadership Manually")
+            st.subheader("✍ Select Future Leadership Manually")
 
             with st.form("manual_leadership_form"):
                 manual_candidates = st.multiselect(
@@ -293,8 +292,8 @@ if selected_feature == "Main App Flow":
                     manual_vice_captain = remaining_manual.loc[remaining_manual["Leadership_Score"].idxmax()]
                     manual_df["Vice_Captain"] = manual_df["Player Name"] == manual_vice_captain["Player Name"]
 
-                    st.success(f"🥢 **Manually Selected Captain:** {manual_captain['Player Name']} | Leadership Score: {manual_captain['Leadership_Score']:.2f}")
-                    st.info(f"🎖 **Manually Selected Vice-Captain:** {manual_vice_captain['Player Name']} | Leadership Score: {manual_vice_captain['Leadership_Score']:.2f}")
+                    st.success(f"🥢 *Manually Selected Captain:* {manual_captain['Player Name']} | Leadership Score: {manual_captain['Leadership_Score']:.2f}")
+                    st.info(f"🎖 *Manually Selected Vice-Captain:* {manual_vice_captain['Player Name']} | Leadership Score: {manual_vice_captain['Leadership_Score']:.2f}")
 
                     st.dataframe(manual_df[[
                         "Player Name", "Role", "Performance_score", "Fame_score",
@@ -551,7 +550,7 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
         replacements_made = False
 
         if not unsuitable_players.empty:
-            st.warning("⚠️ Some players are not best suited. Replace below if needed:")
+            st.warning("⚠ Some players are not best suited. Replace below if needed:")
 
             for idx, row in unsuitable_players.iterrows():
                 with st.expander(f"🔁 Replace {row['Player Name']} ({row['Primary Role']})"):
