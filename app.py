@@ -164,8 +164,6 @@ if selected_feature == "Main App Flow":
         # Detect Biased Players
         if st.button("Detect Biased Players"):
             st.subheader("🕵‍♂ Biased Players Detected")
-            min_matches = st.slider("Minimum Matches for Bias Detection", 0, 50, 0)
-            df = df[df["Matches"] >= min_matches]
 
             scaler = MinMaxScaler()
             df["Batting Avg (scaled)"] = scaler.fit_transform(df[["Batting Avg"]])
