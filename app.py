@@ -258,13 +258,13 @@ if selected_feature == "Main App Flow":
             csv = final_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
 
-            st.success(f"🏏 *Recommended Captain:* {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
-            st.info(f"🥢 *Vice-Captain:* {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
+            st.success(f"🏏 Recommended Captain: {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
+            st.info(f"🥢 Vice-Captain: {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
 
             if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
                
-                st.warning(f"⚠ Rohit Sharma is the *current captain, but based on data, **{captain['Player Name']}* has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+                st.warning(f"⚠ Rohit Sharma is the current captain, but based on data, **{captain['Player Name']} has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
 
         # ------------------ Manual Leadership ------------------
         if "final_xi" in st.session_state:
@@ -290,8 +290,8 @@ if selected_feature == "Main App Flow":
                     manual_vice_captain = remaining_manual.loc[remaining_manual["Leadership_Score"].idxmax()]
                     manual_df["Vice_Captain"] = manual_df["Player Name"] == manual_vice_captain["Player Name"]
 
-                    st.success(f"🥢 *Manually Selected Captain:* {manual_captain['Player Name']} | Leadership Score: {manual_captain['Leadership_Score']:.2f}")
-                    st.info(f"🎖 *Manually Selected Vice-Captain:* {manual_vice_captain['Player Name']} | Leadership Score: {manual_vice_captain['Leadership_Score']:.2f}")
+                    st.success(f"🥢 Manually Selected Captain: {manual_captain['Player Name']} | Leadership Score: {manual_captain['Leadership_Score']:.2f}")
+                    st.info(f"🎖 Manually Selected Vice-Captain: {manual_vice_captain['Player Name']} | Leadership Score: {manual_vice_captain['Leadership_Score']:.2f}")
 
                     st.dataframe(manual_df[[
                         "Player Name", "Role", "Performance_score", "Fame_score",
@@ -307,7 +307,7 @@ if selected_feature == "Main App Flow":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
     
-        # ------------------ PRESSURE HEATMAP XI ------------------
+    # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
     st.subheader("🔥 Pressure Heatmap XI")
     pressure_file = st.file_uploader("📂 Upload CSV with Pressure Metrics", type="csv", key="pressure_upload")
@@ -315,14 +315,27 @@ elif selected_feature == "Pressure Heatmap XI":
     if pressure_file:
         df = pd.read_csv(pressure_file)
 
-        required_cols = ["Player Name", "Role", "Performance_score", "Pressure_score"]
-        if all(col in df.columns for col in required_cols):
+        required_cols_base = ["Player Name", "Role", "Performance_score"]
+        missing_cols = [col for col in required_cols_base if col not in df.columns]
+
+        if missing_cols:
+            st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
+        else:
+            # Auto-generate Pressure_score if missing
+            if "Pressure_score" not in df.columns:
+                if st.checkbox("⚙️ Auto-generate Pressure Score (Performance × 0.97)"):
+                    df["Pressure_score"] = df["Performance_score"] * 0.97
+                    st.success("✅ 'Pressure_score' generated from Performance_score.")
+                else:
+                    st.warning("⚠️ 'Pressure_score' column is missing. Please check the box to auto-generate or upload a complete CSV.")
+                    st.stop()
+
             np.random.seed(42)
 
             phase_options = ["Powerplay", "Middle Overs", "Death Overs"]
             situation_options = ["Chasing", "Defending", "Clutch Moments"]
 
-            # Randomly assign phase & match situations
+            # Random assignment for phase & match situations
             df["Phase Suitability"] = np.random.choice(phase_options, size=len(df))
             df["Match Situation"] = np.random.choice(situation_options, size=len(df))
 
@@ -359,21 +372,19 @@ elif selected_feature == "Pressure Heatmap XI":
                 by="Impact Rating", ascending=False
             ).head(11)
 
-            st.dataframe(top_xi[[
-                "Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"
-            ]])
+            st.dataframe(top_xi[[ "Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating" ]])
 
             # ⬇ Download Button
             csv_out = top_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Pressure Heatmap XI", csv_out, "pressure_heatmap_xi.csv", "text/csv")
-        else:
-            st.error("❌ Missing required columns: 'Player Name', 'Role', 'Performance_score', 'Pressure_score'")
+    
     else:
         st.info("📁 Please upload a CSV file with required pressure metrics to continue.")
+
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-  
+
         # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
     st.subheader("⚖ Role Balance Auditor (With Role Distribution & Alerts)")
@@ -588,4 +599,4 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-    
+
