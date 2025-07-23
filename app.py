@@ -139,6 +139,15 @@ if lottie_cricket:
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
 
+    def assign_stardom_level(score, quantiles):
+        if score >= quantiles[0.75]:
+            return "🌟 Superstar"
+        elif score >= quantiles[0.50]:
+            return "⭐ Star"
+        elif score >= quantiles[0.25]:
+            return "🔹 Emerging"
+        else:
+            return "🔸 Lesser Known"
 
     # Step 0: Upload File
     if st.session_state.step == 0:
@@ -188,42 +197,47 @@ if selected_feature == "Main App Flow":
 
             df["bias_score"] = df["Fame_score"] - df["Performance_score"]
 
-             # 💡 NEW: Fair Bias Detection Logic with Margin
+            # Stardom levels
+            fame_quantiles = df["Fame_index"].quantile([0.25, 0.5, 0.75])
+            endorsement_quantiles = df["Endorsement_score"].quantile([0.25, 0.5, 0.75])
+            df["stardom_fame_level"] = df["Fame_index"].apply(lambda x: assign_stardom_level(x, fame_quantiles))
+            df["stardom_endorsement_level"] = df["Endorsement_score"].apply(lambda x: assign_stardom_level(x, endorsement_quantiles))
+
+            # Bias Detection
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
-            margin = 0.05  # ← 5% buffer on both sides
+            margin = 0.05
 
-
-            fame_threshold = df["Fame_score"].quantile(0.75)
-            performance_threshold = df["Performance_score"].quantile(0.25)
             df["Is_Biased"] = (
-           (df["Fame_score"] > fame_threshold + margin) &
-           (df["Performance_score"] < performance_threshold - margin)
-)
+                (df["Fame_score"] > fame_threshold + margin) &
+                (df["Performance_score"] < performance_threshold - margin)
+            )
 
             st.session_state.df = df
-            st.dataframe(df[df["Is_Biased"]][["Player Name", "Role", "Fame_score", "Performance_score", "bias_score", "Is_Biased"]])
+            st.dataframe(df[df["Is_Biased"]][[
+                "Player Name", "Role", "Fame_score", "Performance_score",
+                "bias_score", "Is_Biased",
+                "stardom_fame_level", "stardom_endorsement_level"
+            ]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
                              hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
             st.plotly_chart(fig, use_container_width=True)
 
-        # ------------------ Generate Final Unbiased XI ------------------
+        # Generate Final Unbiased XI
         if st.button("Generate Final Unbiased XI"):
             st.subheader("🏆 Final Unbiased XI")
             df = st.session_state.df
             unbiased_df = df[df["Is_Biased"] == False]
 
-            wk_batter = None  # ← FIX: Always define this variable
+            wk_batter = None
 
-            # Step 1: Try Unbiased WK-Batter
             wk_unbiased = unbiased_df[unbiased_df["Role"] == "Wk-Batter"].copy()
             if not wk_unbiased.empty:
                 wk_unbiased["Leadership_Score"] = 0.6 * wk_unbiased["Performance_score"] + 0.4 * wk_unbiased["Fame_score"]
                 wk_batter = wk_unbiased.nlargest(1, "Leadership_Score")
                 st.info(f"✅ WK-Batter selected from unbiased list: {wk_batter.iloc[0]['Player Name']}")
             else:
-                # Fallback: Select from original uploaded dataset (even if biased)
                 wk_all = df[df["Role"] == "Wk-Batter"].copy()
                 if not wk_all.empty:
                     wk_all["Leadership_Score"] = 0.6 * wk_all["Performance_score"] + 0.4 * wk_all["Fame_score"]
@@ -231,9 +245,7 @@ if selected_feature == "Main App Flow":
                     st.warning(f"⚠ No unbiased WK-Batter found. Selected best available from full dataset: {wk_batter.iloc[0]['Player Name']}")
                 else:
                     st.error("❌ No WK-Batter found at all in the dataset. Please include at least one.")
-                      # Avoid running below code
 
-            # Step 2: Select remaining 10 players (excluding selected WK-Batter)
             remaining_pool = unbiased_df[~unbiased_df["Player Name"].isin(wk_batter["Player Name"])]
 
             batters = remaining_pool[remaining_pool["Role"] == "Batter"].nlargest(4, "Performance_score")
@@ -253,7 +265,10 @@ if selected_feature == "Main App Flow":
             vice_captain = remaining.loc[remaining["Leadership_Score"].idxmax()]
             final_xi["Vice_Captain"] = final_xi["Player Name"] == vice_captain["Player Name"]
 
-            st.dataframe(final_xi[["Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased", "Captain", "Vice_Captain"]])
+            st.dataframe(final_xi[[
+                "Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased",
+                "stardom_fame_level", "stardom_endorsement_level", "Captain", "Vice_Captain"
+            ]])
 
             csv = final_xi.to_csv(index=False).encode("utf-8")
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
@@ -263,10 +278,9 @@ if selected_feature == "Main App Flow":
 
             if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
-               
-                st.warning(f"⚠ Rohit Sharma is the current captain, but based on data, **{captain['Player Name']} has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+                st.warning(f"⚠ Rohit Sharma is the current captain, but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
 
-        # ------------------ Manual Leadership ------------------
+        # Manual Leadership Selector
         if "final_xi" in st.session_state:
             st.markdown("---")
             st.subheader("✍ Select Future Leadership Manually")
@@ -295,19 +309,20 @@ if selected_feature == "Main App Flow":
 
                     st.dataframe(manual_df[[
                         "Player Name", "Role", "Performance_score", "Fame_score",
+                        "stardom_fame_level", "stardom_endorsement_level",
                         "Leadership_Score", "Captain", "Vice_Captain"
                     ]])
-                     # ✅ Download button for manually selected leadership
+
                     manual_csv = manual_df.to_csv(index=False).encode("utf-8")
                     st.download_button("⬇ Download Manual Captain-Vice CSV", manual_csv, "manual_captain_vice.csv", "text/csv")
                 else:
                     st.warning("👥 Please select at least 2 players to perform leadership calculation.")
 
-                # --- Signature Footer ---
-    st.markdown("---")
-    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-    
-    # ------------------ PRESSURE HEATMAP XI ------------------
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+
+  # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
     st.subheader("🔥 Pressure Heatmap XI")
     pressure_file = st.file_uploader("📂 Upload CSV with Pressure Metrics", type="csv", key="pressure_upload")
@@ -321,7 +336,6 @@ elif selected_feature == "Pressure Heatmap XI":
         if missing_cols:
             st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
         else:
-            # Auto-generate Pressure_score if missing
             if "Pressure_score" not in df.columns:
                 if st.checkbox("⚙️ Auto-generate Pressure Score (Performance × 0.97)"):
                     df["Pressure_score"] = df["Performance_score"] * 0.97
@@ -330,26 +344,30 @@ elif selected_feature == "Pressure Heatmap XI":
                     st.warning("⚠️ 'Pressure_score' column is missing. Please check the box to auto-generate or upload a complete CSV.")
                     st.stop()
 
-            np.random.seed(42)
+            def assign_phase_suitability(row):
+                if row["Performance_score"] >= 0.8:
+                    return "Death Overs"
+                elif row["Performance_score"] >= 0.6:
+                    return "Middle Overs"
+                else:
+                    return "Powerplay"
 
-            phase_options = ["Powerplay", "Middle Overs", "Death Overs"]
-            situation_options = ["Chasing", "Defending", "Clutch Moments"]
+            def assign_match_situation(row):
+                if row["Role"] == "Bowler" and row["Performance_score"] >= 0.7:
+                    return "Defending"
+                elif row["Performance_score"] >= 0.75:
+                    return "Clutch Moments"
+                else:
+                    return "Chasing"
 
-            # Random assignment for phase & match situations
-            df["Phase Suitability"] = np.random.choice(phase_options, size=len(df))
-            df["Match Situation"] = np.random.choice(situation_options, size=len(df))
-
-            # Categorize Pressure Zone
-            df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1],
-                                         labels=["Low", "Medium", "High"])
-
-            # Calculate Impact Rating
+            df["Phase Suitability"] = df.apply(assign_phase_suitability, axis=1)
+            df["Match Situation"] = df.apply(assign_match_situation, axis=1)
+            df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1], labels=["Low", "Medium", "High"])
             df["Impact Rating"] = round((df["Performance_score"] * 0.6 + df["Pressure_score"] * 0.4) * 10, 2)
 
             st.success("✅ File processed with Pressure Heatmap logic.")
             st.markdown("Visualize how your players perform under pressure situations and phases.")
 
-            # 📊 Heatmap Visualization
             st.markdown("### 📊 Pressure Heatmap by Situation & Zone")
             heatmap_data = df.pivot_table(
                 index="Match Situation",
@@ -366,22 +384,81 @@ elif selected_feature == "Pressure Heatmap XI":
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # 🏏 Top XI Under Pressure
             st.markdown("### 💪 Top XI Under High Pressure")
-            top_xi = df[df["Pressure Zone"] == "High"].sort_values(
-                by="Impact Rating", ascending=False
-            ).head(11)
+            top_xi = df[df["Pressure Zone"] == "High"].sort_values(by="Impact Rating", ascending=False).head(11)
+            st.dataframe(top_xi[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
 
-            st.dataframe(top_xi[[ "Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating" ]])
+            st.markdown("### ❌ Players Not Selected in Top XI (High Pressure)")
+            picked_names = top_xi["Player Name"].tolist()
+            unpicked_df = df[(df["Pressure Zone"] == "High") & (~df["Player Name"].isin(picked_names))]
 
-            # ⬇ Download Button
-            csv_out = top_xi.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇ Download Pressure Heatmap XI", csv_out, "pressure_heatmap_xi.csv", "text/csv")
-    
+            if not unpicked_df.empty:
+                st.dataframe(unpicked_df[["Player Name", "Role", "Impact Rating"]])
+            else:
+                st.info("✅ All High Pressure players are in the Top XI.")
+
+            st.markdown("### ✍️ Add Manual Player(s) to XI")
+            manual_players = []
+            manual_validated = False
+
+            with st.expander("➕ Add Player Manually"):
+                num_manual = st.number_input("How many manual players do you want to add?", min_value=0, max_value=5, step=1)
+
+                for i in range(num_manual):
+                    st.markdown(f"#### Player {i+1}")
+                    name = st.text_input(f"Player Name {i+1}", key=f"name_{i}")
+                    role = st.selectbox(f"Role {i+1}", ["Batter", "Bowler", "All-rounder", "Wicketkeeper"], key=f"role_{i}")
+                    perf_score = st.number_input(f"Performance Score {i+1}", min_value=0.0, max_value=1.0, step=0.01, key=f"perf_{i}")
+
+                    pressure_score = round(perf_score * 0.97, 3)
+                    impact_rating = round((perf_score * 0.6 + pressure_score * 0.4) * 10, 2)
+
+                    phase = "Death Overs" if perf_score >= 0.8 else "Middle Overs" if perf_score >= 0.6 else "Powerplay"
+                    match_sit = "Defending" if role == "Bowler" and perf_score >= 0.7 else "Clutch Moments" if perf_score >= 0.75 else "Chasing"
+
+                    manual_players.append({
+                        "Player Name": name,
+                        "Role": role,
+                        "Performance_score": perf_score,
+                        "Pressure_score": pressure_score,
+                        "Phase Suitability": phase,
+                        "Match Situation": match_sit,
+                        "Pressure Zone": "High",
+                        "Impact Rating": impact_rating
+                    })
+
+                if num_manual > 0 and st.button("✅ Calculate Pressure Validation"):
+                    validated_players = []
+                    for p in manual_players:
+                        is_valid = (
+                            p["Performance_score"] >= 0.7 and
+                            p["Impact Rating"] >= 6.5 and
+                            p["Pressure Zone"] == "High"
+                        )
+                        status = "✅ Performs Under Pressure" if is_valid else "❌ Does Not Perform Under Pressure"
+                        validated_players.append({
+                            **p,
+                            "Pressure Validation": status
+                        })
+
+                    st.markdown("### 🔍 Manual Players Pressure Validation")
+                    st.dataframe(pd.DataFrame(validated_players)[[
+                        "Player Name", "Role", "Performance_score", "Impact Rating", "Pressure Validation"
+                    ]])
+                    manual_players = validated_players
+                    manual_validated = True
+
+            combined_df = pd.concat([top_xi, pd.DataFrame(manual_players)], ignore_index=True)
+
+            st.markdown("### 📋 Final Pressure XI")
+            st.dataframe(combined_df[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
+
+            csv_out = combined_df.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇ Download Final Pressure Heatmap XI", csv_out, "final_pressure_heatmap_xi.csv", "text/csv")
+
     else:
         st.info("📁 Please upload a CSV file with required pressure metrics to continue.")
 
-    # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
