@@ -304,8 +304,8 @@ if selected_feature == "Main App Flow":
                 else:
                     st.warning("👥 Please select at least 2 players to perform leadership calculation.")
 
-            st.markdown("---")
-            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
 
   # ------------------ PRESSURE HEATMAP XI ------------------
