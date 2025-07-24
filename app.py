@@ -68,16 +68,6 @@ st.markdown("<h4>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_
 if lottie_cricket:
     st_lottie(lottie_cricket, height=150, key="cricket_header")
 
-# ------------------ Stardom Level Function ------------------
-def assign_stardom_level(score, quantiles):
-    if score >= quantiles[0.75]:
-        return "🌟 Superstar"
-    elif score >= quantiles[0.50]:
-        return "⭐ Star"
-    elif score >= quantiles[0.25]:
-        return "🔹 Emerging"
-    else:
-        return "🔸 Lesser Known"
 
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
@@ -126,8 +116,6 @@ if selected_feature == "Main App Flow":
             df["Fame_score"] = scaler.fit_transform(df[["Fame_index"]]) * 0.6 + scaler.fit_transform(df[["Endorsement_score"]]) * 0.4
             df["bias_score"] = df["Fame_score"] - df["Performance_score"]
 
-            fame_quantiles = df["Fame_index"].quantile([0.25, 0.5, 0.75])
-            df["Stardom_Level"] = df["Fame_index"].apply(lambda x: assign_stardom_level(x, fame_quantiles))
 
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
@@ -142,11 +130,11 @@ if selected_feature == "Main App Flow":
 
             st.dataframe(df[df["Is_Biased"]][[
                 "Player Name", "Role", "Fame_score", "Performance_score",
-                "bias_score", "Is_Biased", "Stardom_Level"
+                "bias_score", "Is_Biased"
             ]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
-                             hover_data=["Player Name", "Role", "Stardom_Level"], title="Fame vs Performance Bias Map")
+                             hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
             st.plotly_chart(fig, use_container_width=True)
 
         if st.button("Generate Final Unbiased XI"):
@@ -502,16 +490,6 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
         "finisher": 6
     }
 
-    # Skill modifiers per soil
-    skill_modifiers = {
-        "Red Soil": {
-            "Swing": 1.0, "Yorker": 1.0, "Power Hitter": 0.5, "Wrist Spin": 0.2, "Cutter": 0.3
-        },
-        "Black Soil": {
-            "Wrist Spin": 1.0, "Off Spin": 0.9, "Cutter": 0.8, "Power Hitter": 0.5, "Yorker": 0.4
-        }
-    }
-
     # Adaptability calculator
     def calculate_adaptability(row):
         score = 0
@@ -527,17 +505,15 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
             score += 2
         return min(score, 10)
 
-    # Pitch score and suitability calculation
+    # Pitch score and suitability calculation (Skill removed)
     def calculate_pitch_score_and_suitability(row, soil, timing):
         role = row["Primary Role"].strip().lower()
         adaptability = row.get("Adaptability Score", 5)
-        skill = row.get("Skill", "").strip()
 
         base_score = base_scores.get(role, 6)
         role_modifier = venue_modifiers[soil][timing].get(role, 1.0)
-        skill_bonus = skill_modifiers[soil].get(skill, 0.0)
 
-        final_score = (base_score * role_modifier) + (0.2 * adaptability) + skill_bonus
+        final_score = (base_score * role_modifier) + (0.2 * adaptability)
         threshold = 7.5 if soil == "Black Soil" and timing == "Night" else 7.0
         suitability = "✅ Best Suited" if final_score >= threshold else "❌ Not Best Suited"
 
@@ -548,8 +524,6 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
 
         if "Adaptability Score" not in df.columns:
             df["Adaptability Score"] = df.apply(lambda row: calculate_adaptability(row), axis=1)
-        if "Skill" not in df.columns:
-            df["Skill"] = ""
 
         soil = st.selectbox("🫑 Choose Soil Type", ["Red Soil", "Black Soil"])
         timing = st.selectbox("⏰ Choose Match Timing", ["Day", "Night"])
@@ -561,13 +535,11 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
         st.subheader("📊 Unbiased XI with Pitch Score & Suitability")
         st.dataframe(df)
 
-        # Initial download
         csv_original = df.to_csv(index=False).encode("utf-8")
         st.download_button("📅 Download Original CSV", data=csv_original, file_name="Pitch_Adaptive_XI_Original.csv", mime="text/csv")
 
         # --- Manual Replacement Logic ---
         unsuitable_players = df[df["Pitch Suitability"] == "❌ Not Best Suited"]
-
         replacements_made = False
 
         if not unsuitable_players.empty:
@@ -578,13 +550,11 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
                     new_name = st.text_input("Name", key=f"name_{idx}")
                     new_role = st.selectbox("Primary Role", options=list(base_scores.keys()), key=f"role_{idx}")
                     new_adapt = st.slider("Adaptability Score", 1, 10, 5, key=f"adapt_{idx}")
-                    new_skill = st.selectbox("Skill", options=[""] + list(skill_modifiers[soil].keys()), key=f"skill_{idx}")
                     if st.button("➕ Add Replacement", key=f"add_{idx}") and new_name:
                         new_row = pd.DataFrame([{
                             "Player Name": new_name,
                             "Primary Role": new_role.title(),
-                            "Adaptability Score": new_adapt,
-                            "Skill": new_skill
+                            "Adaptability Score": new_adapt
                         }])
                         new_row[["Pitch Score", "Pitch Suitability"]] = new_row.apply(
                             lambda r: calculate_pitch_score_and_suitability(r, soil, timing), axis=1
@@ -610,4 +580,3 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
