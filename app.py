@@ -21,7 +21,6 @@ if "step" not in st.session_state:
 if "df" not in st.session_state:
     st.session_state.df = None
 
-
 # ------------------ LOTTIE LOADER ------------------
 def load_lottie_url(url: str):
     try:
@@ -37,109 +36,52 @@ lottie_cricket = load_lottie_url("https://assets7.lottiefiles.com/packages/lf20_
 # ------------------ STYLING ------------------
 st.markdown("""
     <style>
-        /* Background and text */
-        .stApp {
-            background-color: #0b132b;  /* Dark pitch color */
-            color: #ffffff;
-            font-family: 'Segoe UI', sans-serif;
-        }
-
-        /* Title and subtitle */
-        h1, h2, h3, h4 {
-            color: #ffd700;  /* Cricket golden */
-            text-align: center;
-        }
-
-        /* Sidebar */
-        section[data-testid="stSidebar"] {
-            background-color: #1c2541;
-            color: white;
-            border-right: 2px solid #2a9d8f;
-        }
-
-        /* Sidebar titles */
-        .css-1d391kg {  /* title */
-            color: #fcbf49 !important;
-        }
-
-        .css-1cpxqw2 {  /* sidebar radio buttons */
-            color: #ffffff !important;
-        }
-
-        /* Buttons */
-        .stButton > button {
-            background-color: #2a9d8f;
-            color: white;
-            font-weight: bold;
-            border-radius: 12px;
-            padding: 10px 20px;
-            transition: background-color 0.3s ease;
-        }
-
-        .stButton > button:hover {
-            background-color: #21867a;
-        }
-
-        /* Download buttons */
-        .stDownloadButton > button {
-            background-color: #e63946;
-            color: white;
-            font-weight: bold;
-            border-radius: 12px;
-        }
-
-        .stDownloadButton > button:hover {
-            background-color: #d62828;
-        }
-
-        /* Info boxes, warnings, etc. */
-        .stAlert {
-            border-radius: 10px;
-        }
-
-        /* Tables */
-        .stDataFrame {
-            border: 2px solid #2a9d8f;
-            border-radius: 12px
-        }
-
-        /* Input widgets */
-        .stTextInput, .stSelectbox, .stSlider {
-            border-radius: 10px !important;
-        }
-
-        /* Center Lottie Animation */
-        iframe[title="cricket_header"] {
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
+        .stApp { background-color: #0b132b; color: #ffffff; font-family: 'Segoe UI', sans-serif; }
+        h1, h2, h3, h4 { color: #ffd700; text-align: center; }
+        section[data-testid="stSidebar"] { background-color: #1c2541; color: white; border-right: 2px solid #2a9d8f; }
+        .css-1d391kg { color: #fcbf49 !important; }
+        .css-1cpxqw2 { color: #ffffff !important; }
+        .stButton > button { background-color: #2a9d8f; color: white; font-weight: bold; border-radius: 12px; padding: 10px 20px; transition: background-color 0.3s ease; }
+        .stButton > button:hover { background-color: #21867a; }
+        .stDownloadButton > button { background-color: #e63946; color: white; font-weight: bold; border-radius: 12px; }
+        .stDownloadButton > button:hover { background-color: #d62828; }
+        .stAlert { border-radius: 10px; }
+        .stDataFrame { border: 2px solid #2a9d8f; border-radius: 12px }
+        .stTextInput, .stSelectbox, .stSlider { border-radius: 10px !important; }
+        iframe[title="cricket_header"] { display: block; margin-left: auto; margin-right: auto; }
     </style>
 """, unsafe_allow_html=True)
-
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased XI Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
-    "Pressure Heatmap XI",  
+    "Pressure Heatmap XI",
     "Role Balance Auditor",
     "Pitch Adaptive XI Auditor"
 ])
 
 # ------------------ HEADER ------------------
-
-st.image("app logo.jpg", width=150)  # Add your logo here
-
-st.markdown("<h1 style='text-align: center;'>🏏 TrueXI Selector App</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center;'>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_allow_html=True)
+st.image("app logo.jpg", width=150)
+st.markdown("<h1>🏏 TrueXI Selector App</h1>", unsafe_allow_html=True)
+st.markdown("<h4>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_allow_html=True)
 if lottie_cricket:
     st_lottie(lottie_cricket, height=150, key="cricket_header")
 
+# ------------------ Stardom Level Function ------------------
+def assign_stardom_level(score, quantiles):
+    if score >= quantiles[0.75]:
+        return "🌟 Superstar"
+    elif score >= quantiles[0.50]:
+        return "⭐ Star"
+    elif score >= quantiles[0.25]:
+        return "🔹 Emerging"
+    else:
+        return "🔸 Lesser Known"
+
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
-  
-    # Step 0: Upload File
+
     if st.session_state.step == 0:
         uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
         if uploaded_file:
@@ -152,7 +94,6 @@ if selected_feature == "Main App Flow":
     if st.session_state.df is not None:
         df = st.session_state.df
 
-        # Show Player Data
         if st.button("Show Player Data"):
             st.subheader("📋 Uploaded Player Data")
             format_filter = st.selectbox("Filter by Format", options=df["Format"].unique())
@@ -160,7 +101,6 @@ if selected_feature == "Main App Flow":
             filtered_df = df[(df["Format"] == format_filter) & (df["Role"].isin(role_filter))]
             st.dataframe(filtered_df)
 
-        # Detect Biased Players
         if st.button("Detect Biased Players"):
             st.subheader("🕵‍♂ Biased Players Detected")
 
@@ -184,14 +124,11 @@ if selected_feature == "Main App Flow":
             df["Performance_score_raw"] = df.apply(compute_performance, axis=1)
             df["Performance_score"] = scaler.fit_transform(df[["Performance_score_raw"]])
             df["Fame_score"] = scaler.fit_transform(df[["Fame_index"]]) * 0.6 + scaler.fit_transform(df[["Endorsement_score"]]) * 0.4
-
             df["bias_score"] = df["Fame_score"] - df["Performance_score"]
 
-            # Stardom levels
             fame_quantiles = df["Fame_index"].quantile([0.25, 0.5, 0.75])
-            endorsement_quantiles = df["Endorsement_score"].quantile([0.25, 0.5, 0.75])
-           
-            # Bias Detection
+            df["Stardom_Level"] = df["Fame_index"].apply(lambda x: assign_stardom_level(x, fame_quantiles))
+
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
             margin = 0.05
@@ -202,23 +139,22 @@ if selected_feature == "Main App Flow":
             )
 
             st.session_state.df = df
+
             st.dataframe(df[df["Is_Biased"]][[
                 "Player Name", "Role", "Fame_score", "Performance_score",
-                "bias_score", "Is_Biased"
+                "bias_score", "Is_Biased", "Stardom_Level"
             ]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
-                             hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
+                             hover_data=["Player Name", "Role", "Stardom_Level"], title="Fame vs Performance Bias Map")
             st.plotly_chart(fig, use_container_width=True)
 
-        # Generate Final Unbiased XI
         if st.button("Generate Final Unbiased XI"):
             st.subheader("🏆 Final Unbiased XI")
             df = st.session_state.df
             unbiased_df = df[df["Is_Biased"] == False]
 
             wk_batter = None
-
             wk_unbiased = unbiased_df[unbiased_df["Role"] == "Wk-Batter"].copy()
             if not wk_unbiased.empty:
                 wk_unbiased["Leadership_Score"] = 0.6 * wk_unbiased["Performance_score"] + 0.4 * wk_unbiased["Fame_score"]
@@ -247,7 +183,6 @@ if selected_feature == "Main App Flow":
 
             captain = final_xi.loc[final_xi["Leadership_Score"].idxmax()]
             final_xi["Captain"] = final_xi["Player Name"] == captain["Player Name"]
-
             remaining = final_xi[final_xi["Player Name"] != captain["Player Name"]]
             vice_captain = remaining.loc[remaining["Leadership_Score"].idxmax()]
             final_xi["Vice_Captain"] = final_xi["Player Name"] == vice_captain["Player Name"]
@@ -267,7 +202,6 @@ if selected_feature == "Main App Flow":
                 rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
                 st.warning(f"⚠ Rohit Sharma is the current captain, but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
 
-        # Manual Leadership Selector
         if "final_xi" in st.session_state:
             st.markdown("---")
             st.subheader("✍ Select Future Leadership Manually")
@@ -306,7 +240,6 @@ if selected_feature == "Main App Flow":
 
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
 
   # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
