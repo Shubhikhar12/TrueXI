@@ -138,7 +138,7 @@ if lottie_cricket:
 
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
-
+  
     # Step 0: Upload File
     if st.session_state.step == 0:
         uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
