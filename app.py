@@ -139,16 +139,6 @@ if lottie_cricket:
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
 
-    def assign_stardom_level(score, quantiles):
-        if score >= quantiles[0.75]:
-            return "🌟 Superstar"
-        elif score >= quantiles[0.50]:
-            return "⭐ Star"
-        elif score >= quantiles[0.25]:
-            return "🔹 Emerging"
-        else:
-            return "🔸 Lesser Known"
-
     # Step 0: Upload File
     if st.session_state.step == 0:
         uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
@@ -200,9 +190,7 @@ if selected_feature == "Main App Flow":
             # Stardom levels
             fame_quantiles = df["Fame_index"].quantile([0.25, 0.5, 0.75])
             endorsement_quantiles = df["Endorsement_score"].quantile([0.25, 0.5, 0.75])
-            df["stardom_fame_level"] = df["Fame_index"].apply(lambda x: assign_stardom_level(x, fame_quantiles))
-            df["stardom_endorsement_level"] = df["Endorsement_score"].apply(lambda x: assign_stardom_level(x, endorsement_quantiles))
-
+           
             # Bias Detection
             fame_threshold = df["Fame_score"].quantile(0.75)
             performance_threshold = df["Performance_score"].quantile(0.25)
@@ -216,8 +204,7 @@ if selected_feature == "Main App Flow":
             st.session_state.df = df
             st.dataframe(df[df["Is_Biased"]][[
                 "Player Name", "Role", "Fame_score", "Performance_score",
-                "bias_score", "Is_Biased",
-                "stardom_fame_level", "stardom_endorsement_level"
+                "bias_score", "Is_Biased"
             ]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
@@ -267,7 +254,7 @@ if selected_feature == "Main App Flow":
 
             st.dataframe(final_xi[[
                 "Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased",
-                "stardom_fame_level", "stardom_endorsement_level", "Captain", "Vice_Captain"
+                "Captain", "Vice_Captain"
             ]])
 
             csv = final_xi.to_csv(index=False).encode("utf-8")
@@ -309,7 +296,6 @@ if selected_feature == "Main App Flow":
 
                     st.dataframe(manual_df[[
                         "Player Name", "Role", "Performance_score", "Fame_score",
-                        "stardom_fame_level", "stardom_endorsement_level",
                         "Leadership_Score", "Captain", "Vice_Captain"
                     ]])
 
@@ -554,6 +540,7 @@ elif selected_feature == "Role Balance Auditor":
 
 # ------------------ PITCH ADAPTIVE XI AUDITOR ------------------
 elif selected_feature == "Pitch Adaptive XI Auditor":
+
     import pandas as pd
     import streamlit as st
 
@@ -592,9 +579,24 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
         }
     }
 
-    # Score calculation
+    # Adaptability calculator
+    def calculate_adaptability(row):
+        score = 0
+        if row.get('avg_vs_spin', 0) > 35:
+            score += 2
+        if row.get('avg_vs_pace', 0) > 35:
+            score += 2
+        if row.get('roles', 0) >= 3:
+            score += 2
+        if row.get('venues_played', 0) >= 5:
+            score += 2
+        if row.get('clutch_score', 0) > 7:
+            score += 2
+        return min(score, 10)
+
+    # Pitch score and suitability calculation
     def calculate_pitch_score_and_suitability(row, soil, timing):
-        role = row["Primary Role"].lower()
+        role = row["Primary Role"].strip().lower()
         adaptability = row.get("Adaptability Score", 5)
         skill = row.get("Skill", "").strip()
 
@@ -612,11 +614,11 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
         df = pd.read_csv(uploaded_file)
 
         if "Adaptability Score" not in df.columns:
-            df["Adaptability Score"] = 5
+            df["Adaptability Score"] = df.apply(lambda row: calculate_adaptability(row), axis=1)
         if "Skill" not in df.columns:
             df["Skill"] = ""
 
-        soil = st.selectbox("🧱 Choose Soil Type", ["Red Soil", "Black Soil"])
+        soil = st.selectbox("🫑 Choose Soil Type", ["Red Soil", "Black Soil"])
         timing = st.selectbox("⏰ Choose Match Timing", ["Day", "Night"])
 
         df[["Pitch Score", "Pitch Suitability"]] = df.apply(
@@ -628,7 +630,7 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
 
         # Initial download
         csv_original = df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Original CSV", data=csv_original, file_name="Pitch_Adaptive_XI_Original.csv", mime="text/csv")
+        st.download_button("📅 Download Original CSV", data=csv_original, file_name="Pitch_Adaptive_XI_Original.csv", mime="text/csv")
 
         # --- Manual Replacement Logic ---
         unsuitable_players = df[df["Pitch Suitability"] == "❌ Not Best Suited"]
@@ -640,12 +642,11 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
 
             for idx, row in unsuitable_players.iterrows():
                 with st.expander(f"🔁 Replace {row['Player Name']} ({row['Primary Role']})"):
-                    new_name = st.text_input(f"Name", key=f"name_{idx}")
+                    new_name = st.text_input("Name", key=f"name_{idx}")
                     new_role = st.selectbox("Primary Role", options=list(base_scores.keys()), key=f"role_{idx}")
                     new_adapt = st.slider("Adaptability Score", 1, 10, 5, key=f"adapt_{idx}")
                     new_skill = st.selectbox("Skill", options=[""] + list(skill_modifiers[soil].keys()), key=f"skill_{idx}")
                     if st.button("➕ Add Replacement", key=f"add_{idx}") and new_name:
-                        # Create and calculate new player
                         new_row = pd.DataFrame([{
                             "Player Name": new_name,
                             "Primary Role": new_role.title(),
@@ -664,7 +665,7 @@ elif selected_feature == "Pitch Adaptive XI Auditor":
         st.dataframe(df)
 
         csv_final = df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Final Updated CSV", data=csv_final, file_name="Pitch_Adaptive_XI_Updated.csv", mime="text/csv")
+        st.download_button("📅 Download Final Updated CSV", data=csv_final, file_name="Pitch_Adaptive_XI_Updated.csv", mime="text/csv")
 
         # Chart
         st.subheader("📈 Pitch Score Bar Chart")
