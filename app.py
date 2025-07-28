@@ -501,7 +501,6 @@ elif selected_feature == "Role Balance Auditor":
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
 # ------------------ PITCH ADAPTIVE XI AUDITOR ------------------
 elif selected_feature == "Pitch Adaptive XI Auditor":
 
