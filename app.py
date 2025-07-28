@@ -68,64 +68,88 @@ st.markdown("<h4>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_
 if lottie_cricket:
     st_lottie(lottie_cricket, height=150, key="cricket_header")
 
+    # ------------------ UTILITY FUNCTIONS ------------------
+def safe_scale(column):
+    if len(np.unique(column)) > 1:
+        return MinMaxScaler().fit_transform(column.values.reshape(-1, 1))
+    return np.full_like(column.values, 0.5).reshape(-1, 1)
+
+def compute_performance(row):
+    role = row["Role"].strip().lower()
+    if role in ["batter", "wk-batter"]:
+        return row["Batting Avg (scaled)"] * 0.6 + row["Batting SR (scaled)"] * 0.4
+    elif role == "bowler":
+        return row["Wickets (scaled)"] * 0.6 + row["Bowling Econ (scaled)"] * 0.4
+    elif role == "all-rounder":
+        batting = row["Batting Avg (scaled)"] * 0.3 + row["Batting SR (scaled)"] * 0.2
+        bowling = row["Wickets (scaled)"] * 0.3 + row["Bowling Econ (scaled)"] * 0.2
+        return batting + bowling
+    return 0
+
+def calculate_leadership_score(df):
+    df = df.copy()
+    df["Leadership_Score"] = 0.6 * df["Performance_score"] + 0.4 * df["Fame_score"]
+    return df
 
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
 
     if st.session_state.step == 0:
-        uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
+        uploaded_file = st.file_uploader("\U0001F4C1 Upload Final XI CSV", type="csv")
         if uploaded_file:
             df = pd.read_csv(uploaded_file)
             df.dropna(inplace=True)
-            st.session_state.df = df
-            st.session_state.step = 1
-            st.success("✅ File uploaded successfully.")
+            df["Role"] = df["Role"].astype(str).str.strip().str.lower()
+            required_columns = [
+                "Player Name", "Role", "Format", "Batting Avg", "Batting SR",
+                "Wickets", "Bowling Economy", "Google Trends Score", "Social Media Reach"
+            ]
+            missing = [col for col in required_columns if col not in df.columns]
+            if missing:
+                st.error(f"Missing required columns: {', '.join(missing)}")
+            else:
+                st.session_state.df = df
+                st.session_state.step = 1
+                st.success("✅ File uploaded successfully.")
 
     if st.session_state.df is not None:
         df = st.session_state.df
 
         if st.button("Show Player Data"):
-            st.subheader("📋 Uploaded Player Data")
+            st.subheader("\U0001F4CB Uploaded Player Data")
             format_filter = st.selectbox("Filter by Format", options=df["Format"].unique())
             role_filter = st.multiselect("Filter by Role", options=df["Role"].unique(), default=df["Role"].unique())
             filtered_df = df[(df["Format"] == format_filter) & (df["Role"].isin(role_filter))]
             st.dataframe(filtered_df)
 
         if st.button("Detect Biased Players"):
-            st.subheader("🕵‍♂ Biased Players Detected")
+            st.subheader("\U0001F575️‍♂ Biased Players Detected")
 
-            scaler = MinMaxScaler()
-            df["Batting Avg (scaled)"] = scaler.fit_transform(df[["Batting Avg"]])
-            df["Batting SR (scaled)"] = scaler.fit_transform(df[["Batting SR"]])
-            df["Wickets (scaled)"] = scaler.fit_transform(df[["Wickets"]])
-            df["Bowling Econ (scaled)"] = 1 - scaler.fit_transform(df[["Bowling Economy"]])
+            format_filter = st.selectbox("\U0001F3AF Choose Format for Bias Detection", df["Format"].unique())
+            df = df[df["Format"] == format_filter].copy()
 
-            def compute_performance(row):
-                if row["Role"] in ["Batter", "WK-Batter"]:
-                    return row["Batting Avg (scaled)"] * 0.6 + row["Batting SR (scaled)"] * 0.4
-                elif row["Role"] == "Bowler":
-                    return row["Wickets (scaled)"] * 0.6 + row["Bowling Econ (scaled)"] * 0.4
-                elif row["Role"] == "All-rounder":
-                    batting = row["Batting Avg (scaled)"] * 0.5 + row["Batting SR (scaled)"] * 0.2
-                    bowling = row["Wickets (scaled)"] * 0.2 + row["Bowling Econ (scaled)"] * 0.1
-                    return batting + bowling
-                return 0
+            df["Batting Avg (scaled)"] = safe_scale(df["Batting Avg"])
+            df["Batting SR (scaled)"] = safe_scale(df["Batting SR"])
+            df["Wickets (scaled)"] = safe_scale(df["Wickets"])
+            df["Bowling Econ (scaled)"] = 1 - safe_scale(df["Bowling Economy"])
 
             df["Performance_score_raw"] = df.apply(compute_performance, axis=1)
-            df["Performance_score"] = scaler.fit_transform(df[["Performance_score_raw"]])
-            df["Fame_score"] = scaler.fit_transform(df[["Fame_index"]]) * 0.6 + scaler.fit_transform(df[["Endorsement_score"]]) * 0.4
+            df["Performance_score"] = safe_scale(df["Performance_score_raw"])
+            df["Google Trends (scaled)"] = safe_scale(df["Google Trends Score"])
+            df["Social Media Reach (scaled)"] = safe_scale(df["Social Media Reach"])
+
+            df["Fame_score"] = (
+                df["Google Trends (scaled)"] * 0.35 +
+                df["Social Media Reach (scaled)"] * 0.35 +
+                df["Performance_score"] * 0.30
+            )
             df["bias_score"] = df["Fame_score"] - df["Performance_score"]
 
-
-            fame_threshold = df["Fame_score"].quantile(0.75)
-            performance_threshold = df["Performance_score"].quantile(0.25)
+            fame_q3 = df["Fame_score"].quantile(0.75)
+            perf_q1 = df["Performance_score"].quantile(0.25)
             margin = 0.05
 
-            df["Is_Biased"] = (
-                (df["Fame_score"] > fame_threshold + margin) &
-                (df["Performance_score"] < performance_threshold - margin)
-            )
-
+            df["Is_Biased"] = (df["Fame_score"] > fame_q3 + margin) & (df["Performance_score"] < perf_q1 - margin)
             st.session_state.df = df
 
             st.dataframe(df[df["Is_Biased"]][[
@@ -134,94 +158,105 @@ if selected_feature == "Main App Flow":
             ]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
-                             hover_data=["Player Name", "Role"], title="Fame vs Performance Bias Map")
+                             hover_data=["Player Name", "Role"],
+                             title="Fame vs Performance Bias Map")
+            fig.update_layout(
+                xaxis_title="Fame Score",
+                yaxis_title="Performance Score",
+                legend_title="Bias Status"
+            )
             st.plotly_chart(fig, use_container_width=True)
 
         if st.button("Generate Final Unbiased XI"):
-            st.subheader("🏆 Final Unbiased XI")
+            st.subheader("\U0001F3C6 Final Unbiased XI")
             df = st.session_state.df
-            unbiased_df = df[df["Is_Biased"] == False]
+            unbiased_df = df[df["Is_Biased"] == False].copy()
 
             wk_batter = None
-            wk_unbiased = unbiased_df[unbiased_df["Role"] == "Wk-Batter"].copy()
+            wk_unbiased = unbiased_df[unbiased_df["Role"] == "wk-batter"].copy()
             if not wk_unbiased.empty:
-                wk_unbiased["Leadership_Score"] = 0.6 * wk_unbiased["Performance_score"] + 0.4 * wk_unbiased["Fame_score"]
-                wk_batter = wk_unbiased.nlargest(1, "Leadership_Score")
+                wk_unbiased = calculate_leadership_score(wk_unbiased)
+                wk_batter = wk_unbiased.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False).head(1)
                 st.info(f"✅ WK-Batter selected from unbiased list: {wk_batter.iloc[0]['Player Name']}")
             else:
-                wk_all = df[df["Role"] == "Wk-Batter"].copy()
+                wk_all = df[df["Role"] == "wk-batter"].copy()
                 if not wk_all.empty:
-                    wk_all["Leadership_Score"] = 0.6 * wk_all["Performance_score"] + 0.4 * wk_all["Fame_score"]
-                    wk_batter = wk_all.nlargest(1, "Leadership_Score")
-                    st.warning(f"⚠ No unbiased WK-Batter found. Selected best available from full dataset: {wk_batter.iloc[0]['Player Name']}")
+                    wk_all = calculate_leadership_score(wk_all)
+                    wk_batter = wk_all.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False).head(1)
+                    st.warning(f"⚠ No unbiased WK-Batter found. Selected best available: {wk_batter.iloc[0]['Player Name']}")
                 else:
-                    st.error("❌ No WK-Batter found at all in the dataset. Please include at least one.")
+                    st.error("❌ No WK-Batter found in dataset.")
 
             remaining_pool = unbiased_df[~unbiased_df["Player Name"].isin(wk_batter["Player Name"])]
+            batters = remaining_pool[remaining_pool["Role"] == "batter"].nlargest(4, "Performance_score")
+            bowlers = remaining_pool[remaining_pool["Role"] == "bowler"].nlargest(4, "Performance_score")
+            allrounders = remaining_pool[remaining_pool["Role"] == "all-rounder"].nlargest(2, "Performance_score")
 
-            batters = remaining_pool[remaining_pool["Role"] == "Batter"].nlargest(4, "Performance_score")
-            bowlers = remaining_pool[remaining_pool["Role"] == "Bowler"].nlargest(4, "Performance_score")
-            allrounders = remaining_pool[remaining_pool["Role"] == "All-rounder"].nlargest(2, "Performance_score")
+            final_xi = pd.concat([wk_batter, batters, bowlers, allrounders]).drop_duplicates("Player Name").head(11)
+            final_xi = calculate_leadership_score(final_xi)
 
-            final_xi = pd.concat([wk_batter, batters, bowlers, allrounders])
-            final_xi = final_xi.drop_duplicates(subset="Player Name").head(11)
+            final_xi = final_xi.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False)
+            final_xi["Captain"] = False
+            final_xi["Vice_Captain"] = False
+            final_xi.iloc[0, final_xi.columns.get_loc("Captain")] = True
+            final_xi.iloc[1, final_xi.columns.get_loc("Vice_Captain")] = True
+
             st.session_state.final_xi = final_xi
-
-            final_xi["Leadership_Score"] = 0.6 * final_xi["Performance_score"] + 0.4 * final_xi["Fame_score"]
-
-            captain = final_xi.loc[final_xi["Leadership_Score"].idxmax()]
-            final_xi["Captain"] = final_xi["Player Name"] == captain["Player Name"]
-            remaining = final_xi[final_xi["Player Name"] != captain["Player Name"]]
-            vice_captain = remaining.loc[remaining["Leadership_Score"].idxmax()]
-            final_xi["Vice_Captain"] = final_xi["Player Name"] == vice_captain["Player Name"]
-
             st.dataframe(final_xi[[
-                "Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased",
-                "Captain", "Vice_Captain"
+                "Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased", "Captain", "Vice_Captain"
             ]])
 
-            csv = final_xi.to_csv(index=False).encode("utf-8")
+            csv = final_xi[[
+                "Player Name", "Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
+            ]].to_csv(index=False).encode("utf-8")
+
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
+
+            captain = final_xi[final_xi["Captain"]].iloc[0]
+            vice_captain = final_xi[final_xi["Vice_Captain"]].iloc[0]
 
             st.success(f"🏏 Recommended Captain: {captain['Player Name']} | Leadership Score: {captain['Leadership_Score']:.2f}")
             st.info(f"🥢 Vice-Captain: {vice_captain['Player Name']} | Leadership Score: {vice_captain['Leadership_Score']:.2f}")
 
-            if "Rohit Sharma" in final_xi["Player Name"].values and captain["Player Name"] != "Rohit Sharma":
-                rohit_score = final_xi[final_xi["Player Name"] == "Rohit Sharma"]["Leadership_Score"].values[0]
-                st.warning(f"⚠ Rohit Sharma is the current captain, but based on data, **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
+            if "rohit sharma" in final_xi["Player Name"].str.lower().values and captain["Player Name"].lower() != "rohit sharma":
+                rohit_score = final_xi[final_xi["Player Name"].str.lower() == "rohit sharma"]["Leadership_Score"].values[0]
+                st.warning(f"⚠ Rohit Sharma is the current captain, but **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
 
         if "final_xi" in st.session_state:
             st.markdown("---")
             st.subheader("✍ Select Future Leadership Manually")
-
             with st.form("manual_leadership_form"):
                 manual_candidates = st.multiselect(
                     "Select at least 2 players from the Unbiased XI for custom captain & vice-captain evaluation:",
                     options=st.session_state.final_xi["Player Name"].tolist()
                 )
-                submitted = st.form_submit_button("🧠 Calculate Leadership")
+                submitted = st.form_submit_button("\U0001F9E0 Calculate Leadership")
 
             if submitted:
                 if len(manual_candidates) >= 2:
-                    manual_df = st.session_state.final_xi[st.session_state.final_xi["Player Name"].isin(manual_candidates)].copy()
-                    manual_df["Leadership_Score"] = 0.6 * manual_df["Performance_score"] + 0.4 * manual_df["Fame_score"]
+                    manual_df = st.session_state.final_xi[
+                        st.session_state.final_xi["Player Name"].isin(manual_candidates)
+                    ].copy()
 
-                    manual_captain = manual_df.loc[manual_df["Leadership_Score"].idxmax()]
-                    manual_df["Captain"] = manual_df["Player Name"] == manual_captain["Player Name"]
+                    manual_df = calculate_leadership_score(manual_df)
+                    manual_df = manual_df.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False)
+                    manual_df["Captain"] = False
+                    manual_df["Vice_Captain"] = False
+                    manual_df.iloc[0, manual_df.columns.get_loc("Captain")] = True
+                    manual_df.iloc[1, manual_df.columns.get_loc("Vice_Captain")] = True
 
-                    remaining_manual = manual_df[manual_df["Player Name"] != manual_captain["Player Name"]]
-                    manual_vice_captain = remaining_manual.loc[remaining_manual["Leadership_Score"].idxmax()]
-                    manual_df["Vice_Captain"] = manual_df["Player Name"] == manual_vice_captain["Player Name"]
-
-                    st.success(f"🥢 Manually Selected Captain: {manual_captain['Player Name']} | Leadership Score: {manual_captain['Leadership_Score']:.2f}")
-                    st.info(f"🎖 Manually Selected Vice-Captain: {manual_vice_captain['Player Name']} | Leadership Score: {manual_vice_captain['Leadership_Score']:.2f}")
+                    st.success(f"🥢 Manually Selected Captain: {manual_df.iloc[0]['Player Name']} | Leadership Score: {manual_df.iloc[0]['Leadership_Score']:.2f}")
+                    st.info(f"🎖 Manually Selected Vice-Captain: {manual_df.iloc[1]['Player Name']} | Leadership Score: {manual_df.iloc[1]['Leadership_Score']:.2f}")
 
                     st.dataframe(manual_df[[
                         "Player Name", "Role", "Performance_score", "Fame_score",
                         "Leadership_Score", "Captain", "Vice_Captain"
                     ]])
 
-                    manual_csv = manual_df.to_csv(index=False).encode("utf-8")
+                    manual_csv = manual_df[[
+                        "Player Name", "Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
+                    ]].to_csv(index=False).encode("utf-8")
+
                     st.download_button("⬇ Download Manual Captain-Vice CSV", manual_csv, "manual_captain_vice.csv", "text/csv")
                 else:
                     st.warning("👥 Please select at least 2 players to perform leadership calculation.")
@@ -236,6 +271,14 @@ elif selected_feature == "Pressure Heatmap XI":
 
     if pressure_file:
         df = pd.read_csv(pressure_file)
+        df.dropna(inplace=True)
+
+        # ---------------------- Check for Performance_score column ----------------------
+        if "Performance_score" not in df.columns:
+            st.error("❌ 'Performance_score' column is missing in your uploaded CSV.")
+            st.info("🔁 Please go to 'Main App Flow' first, upload your Final XI, and let the app calculate 'Performance_score'. Then save and re-upload here.")
+            st.stop()
+
 
         required_cols_base = ["Player Name", "Role", "Performance_score"]
         missing_cols = [col for col in required_cols_base if col not in df.columns]
