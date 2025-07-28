@@ -62,7 +62,7 @@ selected_feature = st.sidebar.radio("Select Feature", [
 ])
 
 # ------------------ HEADER ------------------
-st.image("app logo.jpg", width=150)
+st.image("app logo.png", width=150)
 st.markdown("<h1>🏏 TrueXI Selector App</h1>", unsafe_allow_html=True)
 st.markdown("<h4>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_allow_html=True)
 if lottie_cricket:
