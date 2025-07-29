@@ -295,20 +295,31 @@ elif selected_feature == "Pressure Heatmap XI":
                     st.stop()
 
             def assign_phase_suitability(row):
-                if row["Performance_score"] >= 0.8:
-                    return "Death Overs"
-                elif row["Performance_score"] >= 0.6:
-                    return "Middle Overs"
-                else:
-                    return "Powerplay"
+                if row["Role"].lower() == "bowler":
+                    if row["Performance_score"] >= 0.8:
+                        return "Death Overs"
+                    elif row["Performance_score"] >= 0.6:
+                        return "Middle Overs"
+                    else:
+                        return "Powerplay"
+                else:  # Batter or All-rounder
+                    if row["Performance_score"] >= 0.8:
+                        return "Powerplay"
+                    elif row["Performance_score"] >= 0.6:
+                        return "Middle Overs"
+                    else:
+                        return "Death Overs"
 
             def assign_match_situation(row):
-                if row["Role"] == "Bowler" and row["Performance_score"] >= 0.7:
-                    return "Defending"
-                elif row["Performance_score"] >= 0.75:
+                if row["Performance_score"] >= 0.75:
                     return "Clutch Moments"
+                elif row["Role"].lower() == "bowler":
+                    return "Defending" if row["Performance_score"] >= 0.6 else "Support Role"
+                elif row["Role"].lower() in ["batter", "all-rounder"]:
+                    return "Chasing" if row["Performance_score"] >= 0.6 else "Anchor / Setup"
                 else:
-                    return "Chasing"
+                    return "Flexible"
+
 
             df["Phase Suitability"] = df.apply(assign_phase_suitability, axis=1)
             df["Match Situation"] = df.apply(assign_match_situation, axis=1)
