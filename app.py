@@ -139,10 +139,10 @@ if selected_feature == "Main App Flow":
             df["Social Media Reach (scaled)"] = safe_scale(df["Social Media Reach"])
 
             df["Fame_score"] = (
-                df["Google Trends (scaled)"] * 0.35 +
-                df["Social Media Reach (scaled)"] * 0.35 +
-                df["Performance_score"] * 0.30
+                df["Google Trends (scaled)"] * 0.5 +
+                df["Social Media Reach (scaled)"] * 0.5 
             )
+
             df["bias_score"] = df["Fame_score"] - df["Performance_score"]
 
             fame_q3 = df["Fame_score"].quantile(0.75)
