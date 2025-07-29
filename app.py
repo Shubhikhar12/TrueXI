@@ -295,17 +295,19 @@ elif selected_feature == "Pressure Heatmap XI":
                     st.stop()
 
             def assign_phase_suitability(row):
-                if row["Role"].lower() == "bowler":
-                    if row["Performance_score"] >= 0.8:
+                role = row["Role"].lower()
+                score = row["Performance_score"]
+                if role == "bowler":
+                    if score >= 0.8:
                         return "Death Overs"
-                    elif row["Performance_score"] >= 0.6:
+                    elif score >= 0.6:
                         return "Middle Overs"
                     else:
                         return "Powerplay"
                 else:  # Batter or All-rounder
-                    if row["Performance_score"] >= 0.8:
+                    if score >= 0.8:
                         return "Powerplay"
-                    elif row["Performance_score"] >= 0.6:
+                    elif score >= 0.6:
                         return "Middle Overs"
                     else:
                         return "Death Overs"
