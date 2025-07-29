@@ -425,7 +425,7 @@ elif selected_feature == "Pressure Heatmap XI":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
-        # ------------------ ROLE BALANCE AUDITOR ------------------
+# ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
     st.subheader("⚖ Role Balance Auditor (With Role Distribution & Alerts)")
 
@@ -454,17 +454,17 @@ elif selected_feature == "Role Balance Auditor":
             role_counts = df["Primary Role"].value_counts().reset_index()
             role_counts.columns = ["Primary Role", "Count"]
 
-            # Role balance checker
+            # Role balance checker with emoji
             def get_balance_status(role, count):
                 if role not in role_limits:
                     return "⚠ Unknown Role"
                 min_r, max_r = role_limits[role]
                 if count < min_r:
-                    return "⚠ Too Few"
+                    return "🟠 Too Few"
                 elif count > max_r:
-                    return "⚠ Too Many"
+                    return "🔴 Too Many"
                 else:
-                    return "✅ Balanced"
+                    return "🟢 Balanced"
 
             role_counts["Balance Status"] = role_counts.apply(
                 lambda row: get_balance_status(row["Primary Role"], row["Count"]), axis=1
@@ -481,6 +481,19 @@ elif selected_feature == "Role Balance Auditor":
             # 📋 Display Data
             st.subheader("📋 Role Balance Report")
             st.dataframe(audit_df)
+
+            # 🔍 Suggestions (optional enhancement)
+            imbalanced_roles = role_counts[role_counts["Balance Status"] != "🟢 Balanced"]
+            if not imbalanced_roles.empty:
+                st.warning("🔍 Suggestions to improve balance:")
+                for _, row in imbalanced_roles.iterrows():
+                    role = row["Primary Role"]
+                    count = row["Count"]
+                    min_r, max_r = role_limits.get(role, (0, 0))
+                    if count < min_r:
+                        st.markdown(f"- ➕ Consider **adding** more players for role: `{role}` (Current: {count}, Minimum Required: {min_r})")
+                    elif count > max_r:
+                        st.markdown(f"- ➖ Consider **removing** some players from role: `{role}` (Current: {count}, Maximum Allowed: {max_r})")
 
             # ⬇ Download
             csv_data = audit_df.to_csv(index=False).encode("utf-8")
@@ -511,6 +524,7 @@ elif selected_feature == "Role Balance Auditor":
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
     else:
         st.info("📁 Please upload a CSV file with roles to continue.")
+
     # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
