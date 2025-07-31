@@ -301,173 +301,170 @@ elif selected_feature == "Pressure Heatmap XI":
         df = pd.read_csv(pressure_file)
         df.dropna(inplace=True)
 
-        if "Performance_score" not in df.columns:
-            st.error("❌ 'Performance_score' column is missing in your uploaded CSV.")
-            st.info("🔁 Please go to 'Main App Flow' first, upload your Final XI, and let the app calculate 'Performance_score'. Then save and re-upload here.")
-            st.stop()
-
-        required_cols_base = ["Player Name", "Role", "Performance_score"]
-        missing_cols = [col for col in required_cols_base if col not in df.columns]
+        required_cols = ["Player Name", "Role", "Death Overs Perf", "Clutch Game Perf", "Pressure Fielding", "Win Clutch Impact"]
+        missing_cols = [col for col in required_cols if col not in df.columns]
 
         if missing_cols:
             st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
-        else:
-            if "Pressure_score" not in df.columns:
-                if st.checkbox("⚙️ Auto-generate Pressure Score (Performance × 0.97)"):
-                    df["Pressure_score"] = df["Performance_score"] * 0.97
-                    st.success("✅ 'Pressure_score' generated from Performance_score.")
+            st.stop()
+
+        # ✅ Calculate Pressure Score from weighted components
+        df["Pressure_score"] = (
+            df["Death Overs Perf"] * 0.4 +
+            df["Clutch Game Perf"] * 0.3 +
+            df["Pressure Fielding"] * 0.2 +
+            df["Win Clutch Impact"] * 0.1
+        )
+
+        def assign_phase_suitability(row):
+            role = row["Role"].lower()
+            score = row["Pressure_score"]
+            if role == "bowler":
+                if score >= 0.8:
+                    return "Death Overs"
+                elif score >= 0.6:
+                    return "Middle Overs"
                 else:
-                    st.warning("⚠️ 'Pressure_score' column is missing. Please check the box to auto-generate or upload a complete CSV.")
-                    st.stop()
-
-            def assign_phase_suitability(row):
-                role = row["Role"].lower()
-                score = row["Performance_score"]
-                if role == "bowler":
-                    if score >= 0.8:
-                        return "Death Overs"
-                    elif score >= 0.6:
-                        return "Middle Overs"
-                    else:
-                        return "Powerplay"
-                else:
-                    if score >= 0.8:
-                        return "Powerplay"
-                    elif score >= 0.6:
-                        return "Middle Overs"
-                    else:
-                        return "Death Overs"
-
-            def assign_match_situation(row):
-                if row["Performance_score"] >= 0.75:
-                    return "Clutch Moments"
-                elif row["Role"].lower() == "bowler":
-                    return "Defending" if row["Performance_score"] >= 0.6 else "Support Role"
-                elif row["Role"].lower() in ["batter", "all-rounder"]:
-                    return "Chasing" if row["Performance_score"] >= 0.6 else "Anchor / Setup"
-                else:
-                    return "Flexible"
-
-            df["Phase Suitability"] = df.apply(assign_phase_suitability, axis=1)
-            df["Match Situation"] = df.apply(assign_match_situation, axis=1)
-            df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1], labels=["Low", "Medium", "High"])
-            df["Impact Rating"] = round((df["Performance_score"] * 0.6 + df["Pressure_score"] * 0.4) * 10, 2)
-
-            st.success("✅ File processed with Pressure Heatmap logic.")
-
-            st.markdown("### 📊 Pressure Heatmap by Situation & Zone")
-            heatmap_data = df.pivot_table(
-                index="Match Situation",
-                columns="Pressure Zone",
-                values="Impact Rating",
-                aggfunc="mean"
-            )
-
-            fig = px.imshow(
-                heatmap_data,
-                text_auto=True,
-                color_continuous_scale="RdYlGn",
-                title="Average Impact Rating by Match Situation & Pressure Zone"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            # ✅ ADDITION: BEEHIVE / BEESWARM PLOT
-            st.markdown("### 🐝 Beehive View: Impact Rating by Role")
-            import numpy as np
-            role_map = {r: i for i, r in enumerate(df["Role"].unique())}
-            df["Jitter_x"] = df["Role"].map(role_map) + np.random.normal(0, 0.15, size=len(df))
-
-            fig_bee = px.scatter(
-                df,
-                x="Jitter_x",
-                y="Impact Rating",
-                color="Pressure Zone",
-                hover_data=["Player Name", "Role", "Match Situation"],
-                title="Beehive Plot: Impact Rating by Role",
-            )
-            fig_bee.update_layout(
-                xaxis=dict(
-                    tickvals=list(role_map.values()),
-                    ticktext=list(role_map.keys()),
-                    title="Role"
-                ),
-                yaxis_title="Impact Rating",
-                showlegend=True
-            )
-            st.plotly_chart(fig_bee, use_container_width=True)
-
-            # Continue your original logic...
-            st.markdown("### 💪 Top XI Under High Pressure")
-            top_xi = df[df["Pressure Zone"] == "High"].sort_values(by="Impact Rating", ascending=False).head(11)
-            st.dataframe(top_xi[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
-
-            st.markdown("### ❌ Players Not Selected in Top XI (High Pressure)")
-            picked_names = top_xi["Player Name"].tolist()
-            unpicked_df = df[(df["Pressure Zone"] == "High") & (~df["Player Name"].isin(picked_names))]
-
-            if not unpicked_df.empty:
-                st.dataframe(unpicked_df[["Player Name", "Role", "Impact Rating"]])
+                    return "Powerplay"
             else:
-                st.info("✅ All High Pressure players are in the Top XI.")
+                if score >= 0.8:
+                    return "Powerplay"
+                elif score >= 0.6:
+                    return "Middle Overs"
+                else:
+                    return "Death Overs"
 
-            st.markdown("### ✍️ Add Manual Player(s) to XI")
-            manual_players = []
-            manual_validated = False
+        def assign_match_situation(row):
+            if row["Pressure_score"] >= 0.75:
+                return "Clutch Moments"
+            elif row["Role"].lower() == "bowler":
+                return "Defending" if row["Pressure_score"] >= 0.6 else "Support Role"
+            elif row["Role"].lower() in ["batter", "all-rounder"]:
+                return "Chasing" if row["Pressure_score"] >= 0.6 else "Anchor / Setup"
+            else:
+                return "Flexible"
 
-            with st.expander("➕ Add Player Manually"):
-                num_manual = st.number_input("How many manual players do you want to add?", min_value=0, max_value=5, step=1)
+        df["Phase Suitability"] = df.apply(assign_phase_suitability, axis=1)
+        df["Match Situation"] = df.apply(assign_match_situation, axis=1)
+        df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1], labels=["Low", "Medium", "High"])
+        df["Impact Rating"] = round(df["Pressure_score"] * 10, 2)
 
-                for i in range(num_manual):
-                    st.markdown(f"#### Player {i+1}")
-                    name = st.text_input(f"Player Name {i+1}", key=f"name_{i}")
-                    role = st.selectbox(f"Role {i+1}", ["Batter", "Bowler", "All-rounder", "Wicketkeeper"], key=f"role_{i}")
-                    perf_score = st.number_input(f"Performance Score {i+1}", min_value=0.0, max_value=1.0, step=0.01, key=f"perf_{i}")
+        st.success("✅ File processed with updated Pressure Heatmap logic.")
 
-                    pressure_score = round(perf_score * 0.97, 3)
-                    impact_rating = round((perf_score * 0.6 + pressure_score * 0.4) * 10, 2)
+        st.markdown("### 📊 Pressure Heatmap by Situation & Zone")
+        heatmap_data = df.pivot_table(
+            index="Match Situation",
+            columns="Pressure Zone",
+            values="Impact Rating",
+            aggfunc="mean"
+        )
 
-                    phase = "Death Overs" if perf_score >= 0.8 else "Middle Overs" if perf_score >= 0.6 else "Powerplay"
-                    match_sit = "Defending" if role == "Bowler" and perf_score >= 0.7 else "Clutch Moments" if perf_score >= 0.75 else "Chasing"
+        fig = px.imshow(
+            heatmap_data,
+            text_auto=True,
+            color_continuous_scale="RdYlGn",
+            title="Average Impact Rating by Match Situation & Pressure Zone"
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-                    manual_players.append({
-                        "Player Name": name,
-                        "Role": role,
-                        "Performance_score": perf_score,
-                        "Pressure_score": pressure_score,
-                        "Phase Suitability": phase,
-                        "Match Situation": match_sit,
-                        "Pressure Zone": "High",
-                        "Impact Rating": impact_rating
+        # ✅ Beehive Plot
+        st.markdown("### 🐝 Beehive View: Impact Rating by Role")
+        import numpy as np
+        role_map = {r: i for i, r in enumerate(df["Role"].unique())}
+        df["Jitter_x"] = df["Role"].map(role_map) + np.random.normal(0, 0.15, size=len(df))
+
+        fig_bee = px.scatter(
+            df,
+            x="Jitter_x",
+            y="Impact Rating",
+            color="Pressure Zone",
+            hover_data=["Player Name", "Role", "Match Situation"],
+            title="Beehive Plot: Impact Rating by Role",
+        )
+        fig_bee.update_layout(
+            xaxis=dict(
+                tickvals=list(role_map.values()),
+                ticktext=list(role_map.keys()),
+                title="Role"
+            ),
+            yaxis_title="Impact Rating",
+            showlegend=True
+        )
+        st.plotly_chart(fig_bee, use_container_width=True)
+
+        st.markdown("### 💪 Top XI Under High Pressure")
+        top_xi = df[df["Pressure Zone"] == "High"].sort_values(by="Impact Rating", ascending=False).head(11)
+        st.dataframe(top_xi[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
+
+        st.markdown("### ❌ Players Not Selected in Top XI (High Pressure)")
+        picked_names = top_xi["Player Name"].tolist()
+        unpicked_df = df[(df["Pressure Zone"] == "High") & (~df["Player Name"].isin(picked_names))]
+
+        if not unpicked_df.empty:
+            st.dataframe(unpicked_df[["Player Name", "Role", "Impact Rating"]])
+        else:
+            st.info("✅ All High Pressure players are in the Top XI.")
+
+        st.markdown("### ✍️ Add Manual Player(s) to XI")
+        manual_players = []
+        manual_validated = False
+
+        with st.expander("➕ Add Player Manually"):
+            num_manual = st.number_input("How many manual players do you want to add?", min_value=0, max_value=5, step=1)
+
+            for i in range(num_manual):
+                st.markdown(f"#### Player {i+1}")
+                name = st.text_input(f"Player Name {i+1}", key=f"name_{i}")
+                role = st.selectbox(f"Role {i+1}", ["Batter", "Bowler", "All-rounder", "Wicketkeeper"], key=f"role_{i}")
+                death_perf = st.number_input("Death Overs Perf", 0.0, 1.0, 0.0, 0.01, key=f"death_{i}")
+                clutch_perf = st.number_input("Clutch Game Perf", 0.0, 1.0, 0.0, 0.01, key=f"clutch_{i}")
+                fielding = st.number_input("Pressure Fielding", 0.0, 1.0, 0.0, 0.01, key=f"field_{i}")
+                win_impact = st.number_input("Win Clutch Impact", 0.0, 1.0, 0.0, 0.01, key=f"win_{i}")
+
+                pressure_score = round(
+                    death_perf * 0.4 + clutch_perf * 0.3 + fielding * 0.2 + win_impact * 0.1, 3
+                )
+                impact_rating = round(pressure_score * 10, 2)
+
+                phase = "Death Overs" if pressure_score >= 0.8 else "Middle Overs" if pressure_score >= 0.6 else "Powerplay"
+                match_sit = "Clutch Moments" if pressure_score >= 0.75 else ("Defending" if role == "Bowler" and pressure_score >= 0.6 else "Chasing")
+
+                manual_players.append({
+                    "Player Name": name,
+                    "Role": role,
+                    "Pressure_score": pressure_score,
+                    "Phase Suitability": phase,
+                    "Match Situation": match_sit,
+                    "Pressure Zone": "High",
+                    "Impact Rating": impact_rating
+                })
+
+            if num_manual > 0 and st.button("✅ Calculate Pressure Validation"):
+                validated_players = []
+                for p in manual_players:
+                    is_valid = (
+                        p["Pressure_score"] >= 0.7 and
+                        p["Impact Rating"] >= 6.5 and
+                        p["Pressure Zone"] == "High"
+                    )
+                    status = "✅ Performs Under Pressure" if is_valid else "❌ Does Not Perform Under Pressure"
+                    validated_players.append({
+                        **p,
+                        "Pressure Validation": status
                     })
 
-                if num_manual > 0 and st.button("✅ Calculate Pressure Validation"):
-                    validated_players = []
-                    for p in manual_players:
-                        is_valid = (
-                            p["Performance_score"] >= 0.7 and
-                            p["Impact Rating"] >= 6.5 and
-                            p["Pressure Zone"] == "High"
-                        )
-                        status = "✅ Performs Under Pressure" if is_valid else "❌ Does Not Perform Under Pressure"
-                        validated_players.append({
-                            **p,
-                            "Pressure Validation": status
-                        })
+                st.markdown("### 🔍 Manual Players Pressure Validation")
+                st.dataframe(pd.DataFrame(validated_players)[[ "Player Name", "Role", "Pressure_score", "Impact Rating", "Pressure Validation" ]])
+                manual_players = validated_players
+                manual_validated = True
 
-                    st.markdown("### 🔍 Manual Players Pressure Validation")
-                    st.dataframe(pd.DataFrame(validated_players)[[
-                        "Player Name", "Role", "Performance_score", "Impact Rating", "Pressure Validation"
-                    ]])
-                    manual_players = validated_players
-                    manual_validated = True
+        combined_df = pd.concat([top_xi, pd.DataFrame(manual_players)], ignore_index=True)
 
-            combined_df = pd.concat([top_xi, pd.DataFrame(manual_players)], ignore_index=True)
+        st.markdown("### 📋 Final Pressure XI")
+        st.dataframe(combined_df[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
 
-            st.markdown("### 📋 Final Pressure XI")
-            st.dataframe(combined_df[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
-
-            csv_out = combined_df.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇ Download Final Pressure Heatmap XI", csv_out, "final_pressure_heatmap_xi.csv", "text/csv")
+        csv_out = combined_df.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇ Download Final Pressure Heatmap XI", csv_out, "final_pressure_heatmap_xi.csv", "text/csv")
 
     else:
         st.info("📁 Please upload a CSV file with required pressure metrics to continue.")
