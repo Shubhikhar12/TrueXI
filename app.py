@@ -12,6 +12,7 @@ from streamlit_lottie import st_lottie
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
+
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="TrueXI Selector", layout="wide")
 
@@ -167,6 +168,33 @@ if selected_feature == "Main App Flow":
             )
             st.plotly_chart(fig, use_container_width=True)
 
+            # 🔄 BEEHIVE / BEESWARM SECTION
+            st.subheader("🐝 Beehive View: Performance by Role")
+            import random
+            df["Jittered Role"] = df["Role"] + df["Role"].apply(lambda x: f"_{random.uniform(-0.3, 0.3):.2f}")
+
+            # For cleaner layout, map to numerical values instead of jittered string
+            role_mapping = {role: idx for idx, role in enumerate(df["Role"].unique())}
+            df["Role_num"] = df["Role"].map(role_mapping)
+            df["Jittered_x"] = df["Role_num"] + np.random.normal(0, 0.15, size=len(df))
+
+            beehive_fig = px.scatter(
+                df, x="Jittered_x", y="Performance_score",
+                color="Role", hover_data=["Player Name", "Fame_score", "Is_Biased"],
+                title="Simulated Beehive Plot: Performance Score by Role"
+            )
+            beehive_fig.update_layout(
+                xaxis=dict(
+                    tickvals=list(role_mapping.values()),
+                    ticktext=list(role_mapping.keys()),
+                    title="Role"
+                ),
+                yaxis_title="Performance Score",
+                showlegend=True
+            )
+            st.plotly_chart(beehive_fig, use_container_width=True)
+
+
         if st.button("Generate Final Unbiased XI"):
             st.subheader("\U0001F3C6 Final Unbiased XI")
             df = st.session_state.df
@@ -264,7 +292,7 @@ if selected_feature == "Main App Flow":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
-  # ------------------ PRESSURE HEATMAP XI ------------------
+# ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
     st.subheader("🔥 Pressure Heatmap XI")
     pressure_file = st.file_uploader("📂 Upload CSV with Pressure Metrics", type="csv", key="pressure_upload")
@@ -273,12 +301,10 @@ elif selected_feature == "Pressure Heatmap XI":
         df = pd.read_csv(pressure_file)
         df.dropna(inplace=True)
 
-        # ---------------------- Check for Performance_score column ----------------------
         if "Performance_score" not in df.columns:
             st.error("❌ 'Performance_score' column is missing in your uploaded CSV.")
             st.info("🔁 Please go to 'Main App Flow' first, upload your Final XI, and let the app calculate 'Performance_score'. Then save and re-upload here.")
             st.stop()
-
 
         required_cols_base = ["Player Name", "Role", "Performance_score"]
         missing_cols = [col for col in required_cols_base if col not in df.columns]
@@ -304,7 +330,7 @@ elif selected_feature == "Pressure Heatmap XI":
                         return "Middle Overs"
                     else:
                         return "Powerplay"
-                else:  # Batter or All-rounder
+                else:
                     if score >= 0.8:
                         return "Powerplay"
                     elif score >= 0.6:
@@ -322,14 +348,12 @@ elif selected_feature == "Pressure Heatmap XI":
                 else:
                     return "Flexible"
 
-
             df["Phase Suitability"] = df.apply(assign_phase_suitability, axis=1)
             df["Match Situation"] = df.apply(assign_match_situation, axis=1)
             df["Pressure Zone"] = pd.cut(df["Pressure_score"], bins=[0, 0.55, 0.65, 1], labels=["Low", "Medium", "High"])
             df["Impact Rating"] = round((df["Performance_score"] * 0.6 + df["Pressure_score"] * 0.4) * 10, 2)
 
             st.success("✅ File processed with Pressure Heatmap logic.")
-            st.markdown("Visualize how your players perform under pressure situations and phases.")
 
             st.markdown("### 📊 Pressure Heatmap by Situation & Zone")
             heatmap_data = df.pivot_table(
@@ -347,6 +371,32 @@ elif selected_feature == "Pressure Heatmap XI":
             )
             st.plotly_chart(fig, use_container_width=True)
 
+            # ✅ ADDITION: BEEHIVE / BEESWARM PLOT
+            st.markdown("### 🐝 Beehive View: Impact Rating by Role")
+            import numpy as np
+            role_map = {r: i for i, r in enumerate(df["Role"].unique())}
+            df["Jitter_x"] = df["Role"].map(role_map) + np.random.normal(0, 0.15, size=len(df))
+
+            fig_bee = px.scatter(
+                df,
+                x="Jitter_x",
+                y="Impact Rating",
+                color="Pressure Zone",
+                hover_data=["Player Name", "Role", "Match Situation"],
+                title="Beehive Plot: Impact Rating by Role",
+            )
+            fig_bee.update_layout(
+                xaxis=dict(
+                    tickvals=list(role_map.values()),
+                    ticktext=list(role_map.keys()),
+                    title="Role"
+                ),
+                yaxis_title="Impact Rating",
+                showlegend=True
+            )
+            st.plotly_chart(fig_bee, use_container_width=True)
+
+            # Continue your original logic...
             st.markdown("### 💪 Top XI Under High Pressure")
             top_xi = df[df["Pressure Zone"] == "High"].sort_values(by="Impact Rating", ascending=False).head(11)
             st.dataframe(top_xi[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
@@ -474,15 +524,13 @@ elif selected_feature == "Role Balance Auditor":
             audit_df = df.merge(role_counts, on="Primary Role", how="left")
 
             # Reorder columns
-            audit_df = audit_df[[
-                "Player Name", "Primary Role", "Batting Position", "Format", "Count", "Balance Status"
-            ]]
+            audit_df = audit_df[[ "Player Name", "Primary Role", "Batting Position", "Format", "Count", "Balance Status" ]]
 
             # 📋 Display Data
             st.subheader("📋 Role Balance Report")
             st.dataframe(audit_df)
 
-            # 🔍 Suggestions (optional enhancement)
+            # 🔍 Suggestions
             imbalanced_roles = role_counts[role_counts["Balance Status"] != "🟢 Balanced"]
             if not imbalanced_roles.empty:
                 st.warning("🔍 Suggestions to improve balance:")
@@ -504,7 +552,7 @@ elif selected_feature == "Role Balance Auditor":
                 mime="text/csv"
             )
 
-            # 📊 Charts
+            # 📊 Pie & Bar Charts
             st.subheader("📈 Role Distribution Overview")
 
             pie_chart = px.pie(
@@ -518,6 +566,28 @@ elif selected_feature == "Role Balance Auditor":
                 title="Role Count with Balance Status"
             )
             st.plotly_chart(bar_chart, use_container_width=True)
+
+            # 🐝 Beehive (Beeswarm-style) Plot
+            st.subheader("🐝 Beeswarm View of Players by Role")
+
+            # Add a jitter column for beehive effect
+            audit_df["Jitter"] = np.random.uniform(-0.3, 0.3, size=len(audit_df))
+
+            beehive_fig = px.scatter(
+                audit_df,
+                x="Jitter",
+                y="Primary Role",
+                color="Balance Status",
+                hover_data=["Player Name", "Batting Position", "Format"],
+                title="Beehive Plot: Player Spread Across Roles",
+                size_max=10,
+                height=600
+            )
+
+            beehive_fig.update_traces(marker=dict(size=12, opacity=0.7, line=dict(width=1, color='black')))
+            beehive_fig.update_xaxes(visible=False, showticklabels=False)
+
+            st.plotly_chart(beehive_fig, use_container_width=True)
 
         else:
             missing = [col for col in required_columns if col not in df.columns]
@@ -640,6 +710,23 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             st.subheader("📋 Adaptive Classification")
             st.dataframe(df)
 
+            # ---------- BEEHIVE / BEESWARM STYLE STRIP PLOT ----------
+            import plotly.express as px
+            st.subheader("🐝 Beehive View of Player Adaptiveness")
+            fig = px.strip(
+                df,
+                x="Pitch Adaptiveness",
+                y="Primary Role",
+                color="Pitch Adaptiveness",
+                hover_name="Player Name",
+                stripmode="overlay",
+                title="Beehive Plot: Player Roles vs Pitch Suitability",
+                height=500,
+            )
+            fig.update_traces(jitter=0.6, marker_size=12)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # ---------- REPLACEMENT LOGIC ----------
             not_ideal_players = df[df["Pitch Adaptiveness"] == "❌ Not Ideal"]
 
             if not not_ideal_players.empty:
@@ -679,7 +766,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
     else:
         st.info("📂 Please upload the Final XI CSV to proceed.")
 
-# --- Signature Footer ---
+    # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
