@@ -520,6 +520,7 @@ elif selected_feature == "Role Balance Auditor":
                 "Anchor": (1, 2),
                 "Floater": (1, 2),
                 "Finisher": (1, 2),
+                "Wk": (1, 1),
                 "All-rounder": (1, 3),
                 "Spinner": (1, 2),
                 "Fast Bowler": (2, 3),
