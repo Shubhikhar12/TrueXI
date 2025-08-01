@@ -77,7 +77,7 @@ def safe_scale(column):
     return np.full_like(column.values, 0.5).reshape(-1, 1)
 
 def compute_performance(row):
-    role = row["Role"].strip().lower()
+    role = row["Primary Role"].strip().lower()
     if role in ["batter", "wk-batter"]:
         return row["Batting Avg (scaled)"] * 0.6 + row["Batting SR (scaled)"] * 0.4
     elif role == "bowler":
@@ -119,9 +119,6 @@ if selected_feature == "Subscription Plans":
     🕐 We’ll verify payment and manually activate your access.
     """)
 
-    
-
-
 # ------------------ MAIN APP FLOW ------------------
 elif selected_feature == "Main App Flow":
 
@@ -130,9 +127,9 @@ elif selected_feature == "Main App Flow":
         if uploaded_file:
             df = pd.read_csv(uploaded_file)
             df.dropna(inplace=True)
-            df["Role"] = df["Role"].astype(str).str.strip().str.lower()
+            df["Primary Role"] = df["Primary Role"].astype(str).str.strip().str.lower()
             required_columns = [
-                "Player Name", "Role", "Format", "Batting Avg", "Batting SR",
+                "Player Name", "Primary Role", "Format", "Batting Avg", "Batting SR",
                 "Wickets", "Bowling Economy", "Google Trends Score", "Social Media Reach"
             ]
             missing = [col for col in required_columns if col not in df.columns]
@@ -149,8 +146,8 @@ elif selected_feature == "Main App Flow":
         if st.button("Show Player Data"):
             st.subheader("\U0001F4CB Uploaded Player Data")
             format_filter = st.selectbox("Filter by Format", options=df["Format"].unique())
-            role_filter = st.multiselect("Filter by Role", options=df["Role"].unique(), default=df["Role"].unique())
-            filtered_df = df[(df["Format"] == format_filter) & (df["Role"].isin(role_filter))]
+            role_filter = st.multiselect("Filter by Primary Role", options=df["Primary Role"].unique(), default=df["Primary Role"].unique())
+            filtered_df = df[(df["Format"] == format_filter) & (df["Primary Role"].isin(role_filter))]
             st.dataframe(filtered_df)
 
         if st.button("Detect Biased Players"):
@@ -184,12 +181,12 @@ elif selected_feature == "Main App Flow":
             st.session_state.df = df
 
             st.dataframe(df[df["Is_Biased"]][[
-                "Player Name", "Role", "Fame_score", "Performance_score",
+                "Player Name", "Primary Role", "Fame_score", "Performance_score",
                 "bias_score", "Is_Biased"
             ]])
 
             fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
-                             hover_data=["Player Name", "Role"],
+                             hover_data=["Player Name", "Primary Role"],
                              title="Fame vs Performance Bias Map")
             fig.update_layout(
                 xaxis_title="Fame Score",
@@ -199,25 +196,25 @@ elif selected_feature == "Main App Flow":
             st.plotly_chart(fig, use_container_width=True)
 
             # 🔄 BEEHIVE / BEESWARM SECTION
-            st.subheader("🐝 Beehive View: Performance by Role")
+            st.subheader("🐝 Beehive View: Performance by Primary Role")
             import random
-            df["Jittered Role"] = df["Role"] + df["Role"].apply(lambda x: f"_{random.uniform(-0.3, 0.3):.2f}")
+            df["Jittered Role"] = df["Primary Role"] + df["Primary Role"].apply(lambda x: f"_{random.uniform(-0.3, 0.3):.2f}")
 
             # For cleaner layout, map to numerical values instead of jittered string
-            role_mapping = {role: idx for idx, role in enumerate(df["Role"].unique())}
-            df["Role_num"] = df["Role"].map(role_mapping)
-            df["Jittered_x"] = df["Role_num"] + np.random.normal(0, 0.15, size=len(df))
+            role_mapping = {role: idx for idx, role in enumerate(df["Primary Role"].unique())}
+            df["Primary Role_num"] = df["Primary Role"].map(role_mapping)
+            df["Jittered_x"] = df["Primary Role_num"] + np.random.normal(0, 0.15, size=len(df))
 
             beehive_fig = px.scatter(
                 df, x="Jittered_x", y="Performance_score",
-                color="Role", hover_data=["Player Name", "Fame_score", "Is_Biased"],
-                title="Simulated Beehive Plot: Performance Score by Role"
+                color="Primary Role", hover_data=["Player Name", "Fame_score", "Is_Biased"],
+                title="Simulated Beehive Plot: Performance Score by Primary Role"
             )
             beehive_fig.update_layout(
                 xaxis=dict(
                     tickvals=list(role_mapping.values()),
                     ticktext=list(role_mapping.keys()),
-                    title="Role"
+                    title="Primary Role"
                 ),
                 yaxis_title="Performance Score",
                 showlegend=True
@@ -231,13 +228,13 @@ elif selected_feature == "Main App Flow":
             unbiased_df = df[df["Is_Biased"] == False].copy()
 
             wk_batter = None
-            wk_unbiased = unbiased_df[unbiased_df["Role"] == "wk-batter"].copy()
+            wk_unbiased = unbiased_df[unbiased_df["Primary Role"] == "wk-batter"].copy()
             if not wk_unbiased.empty:
                 wk_unbiased = calculate_leadership_score(wk_unbiased)
                 wk_batter = wk_unbiased.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False).head(1)
                 st.info(f"✅ WK-Batter selected from unbiased list: {wk_batter.iloc[0]['Player Name']}")
             else:
-                wk_all = df[df["Role"] == "wk-batter"].copy()
+                wk_all = df[df["Primary Role"] == "wk-batter"].copy()
                 if not wk_all.empty:
                     wk_all = calculate_leadership_score(wk_all)
                     wk_batter = wk_all.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False).head(1)
@@ -246,9 +243,9 @@ elif selected_feature == "Main App Flow":
                     st.error("❌ No WK-Batter found in dataset.")
 
             remaining_pool = unbiased_df[~unbiased_df["Player Name"].isin(wk_batter["Player Name"])]
-            batters = remaining_pool[remaining_pool["Role"] == "batter"].nlargest(4, "Performance_score")
-            bowlers = remaining_pool[remaining_pool["Role"] == "bowler"].nlargest(4, "Performance_score")
-            allrounders = remaining_pool[remaining_pool["Role"] == "all-rounder"].nlargest(2, "Performance_score")
+            batters = remaining_pool[remaining_pool["Primary Role"] == "batter"].nlargest(4, "Performance_score")
+            bowlers = remaining_pool[remaining_pool["Primary Role"] == "bowler"].nlargest(4, "Performance_score")
+            allrounders = remaining_pool[remaining_pool["Primary Role"] == "all-rounder"].nlargest(2, "Performance_score")
 
             final_xi = pd.concat([wk_batter, batters, bowlers, allrounders]).drop_duplicates("Player Name").head(11)
             final_xi = calculate_leadership_score(final_xi)
@@ -261,11 +258,11 @@ elif selected_feature == "Main App Flow":
 
             st.session_state.final_xi = final_xi
             st.dataframe(final_xi[[
-                "Player Name", "Role", "Performance_score", "Fame_score", "Is_Biased", "Captain", "Vice_Captain"
+                "Player Name", "Primary Role", "Performance_score", "Fame_score", "Is_Biased", "Captain", "Vice_Captain"
             ]])
 
             csv = final_xi[[
-                "Player Name", "Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
+                "Player Name", "Primary Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
             ]].to_csv(index=False).encode("utf-8")
 
             st.download_button("⬇ Download Final XI CSV", csv, "final_xi.csv", "text/csv")
@@ -307,12 +304,12 @@ elif selected_feature == "Main App Flow":
                     st.info(f"🎖 Manually Selected Vice-Captain: {manual_df.iloc[1]['Player Name']} | Leadership Score: {manual_df.iloc[1]['Leadership_Score']:.2f}")
 
                     st.dataframe(manual_df[[
-                        "Player Name", "Role", "Performance_score", "Fame_score",
+                        "Player Name", "Primary Role", "Performance_score", "Fame_score",
                         "Leadership_Score", "Captain", "Vice_Captain"
                     ]])
 
                     manual_csv = manual_df[[
-                        "Player Name", "Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
+                        "Player Name", "Primary Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
                     ]].to_csv(index=False).encode("utf-8")
 
                     st.download_button("⬇ Download Manual Captain-Vice CSV", manual_csv, "manual_captain_vice.csv", "text/csv")
@@ -511,7 +508,7 @@ elif selected_feature == "Role Balance Auditor":
     if role_file:
         df = pd.read_csv(role_file)
 
-        required_columns = ["Player Name", "Primary Role", "Batting Position", "Format"]
+        required_columns = ["Player Name", "Role", "Batting Position", "Format"]
 
         if all(col in df.columns for col in required_columns):
             st.success("✅ File loaded with all required columns.")
@@ -528,8 +525,8 @@ elif selected_feature == "Role Balance Auditor":
                 "Death Specialist": (1, 2)
             }
 
-            role_counts = df["Primary Role"].value_counts().reset_index()
-            role_counts.columns = ["Primary Role", "Count"]
+            role_counts = df["Role"].value_counts().reset_index()
+            role_counts.columns = ["Role", "Count"]
 
             # Role balance checker with emoji
             def get_balance_status(role, count):
@@ -544,14 +541,14 @@ elif selected_feature == "Role Balance Auditor":
                     return "🟢 Balanced"
 
             role_counts["Balance Status"] = role_counts.apply(
-                lambda row: get_balance_status(row["Primary Role"], row["Count"]), axis=1
+                lambda row: get_balance_status(row["Role"], row["Count"]), axis=1
             )
 
             # Merge with player data
-            audit_df = df.merge(role_counts, on="Primary Role", how="left")
+            audit_df = df.merge(role_counts, on="Role", how="left")
 
             # Reorder columns
-            audit_df = audit_df[[ "Player Name", "Primary Role", "Batting Position", "Format", "Count", "Balance Status" ]]
+            audit_df = audit_df[[ "Player Name", "Role", "Batting Position", "Format", "Count", "Balance Status" ]]
 
             # 📋 Display Data
             st.subheader("📋 Role Balance Report")
@@ -562,7 +559,7 @@ elif selected_feature == "Role Balance Auditor":
             if not imbalanced_roles.empty:
                 st.warning("🔍 Suggestions to improve balance:")
                 for _, row in imbalanced_roles.iterrows():
-                    role = row["Primary Role"]
+                    role = row["Role"]
                     count = row["Count"]
                     min_r, max_r = role_limits.get(role, (0, 0))
                     if count < min_r:
@@ -583,13 +580,13 @@ elif selected_feature == "Role Balance Auditor":
             st.subheader("📈 Role Distribution Overview")
 
             pie_chart = px.pie(
-                role_counts, names="Primary Role", values="Count",
+                role_counts, names="Role", values="Count",
                 title="Role Distribution in Current XI"
             )
             st.plotly_chart(pie_chart, use_container_width=True)
 
             bar_chart = px.bar(
-                role_counts, x="Primary Role", y="Count", color="Balance Status", text_auto=True,
+                role_counts, x="Role", y="Count", color="Balance Status", text_auto=True,
                 title="Role Count with Balance Status"
             )
             st.plotly_chart(bar_chart, use_container_width=True)
@@ -603,7 +600,7 @@ elif selected_feature == "Role Balance Auditor":
             beehive_fig = px.scatter(
                 audit_df,
                 x="Jitter",
-                y="Primary Role",
+                y="Role",
                 color="Balance Status",
                 hover_data=["Player Name", "Batting Position", "Format"],
                 title="Beehive Plot: Player Spread Across Roles",
@@ -635,7 +632,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
     if uploaded_adaptive_file:
         df = pd.read_csv(uploaded_adaptive_file)
 
-        if all(col in df.columns for col in ["Player Name", "Primary Role", "Format"]):
+        if all(col in df.columns for col in ["Player Name", "Role", "Format"]):
 
             all_venues = {
                 "Wankhede Stadium": "Red Soil",
@@ -675,7 +672,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             st.info(f"📌 **Reason:** {toss_reason}")
 
             def classify_player(row):
-                role = row["Primary Role"].lower()
+                role = row["Role"].lower()
 
                 if pitch_type == "Red Soil" and match_time == "Day":
                     if any(x in role for x in ["spinner", "spin all-rounder", "anchor"]):
@@ -731,7 +728,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
                         return priority
                 return 3
 
-            df["Sort Priority"] = df["Primary Role"].apply(get_sort_priority)
+            df["Sort Priority"] = df["Role"].apply(get_sort_priority)
             df = df.sort_values(by="Sort Priority").drop(columns=["Sort Priority"])
 
             st.subheader("📋 Adaptive Classification")
@@ -743,7 +740,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             fig = px.strip(
                 df,
                 x="Pitch Adaptiveness",
-                y="Primary Role",
+                y="Role",
                 color="Pitch Adaptiveness",
                 hover_name="Player Name",
                 stripmode="overlay",
@@ -763,12 +760,12 @@ elif selected_feature == "Pitch Adaptive XI Selector":
                     player_name = row["Player Name"]
                     st.markdown(f"🔁 Replace `{player_name}`:")
                     new_name = st.text_input(f"New Player Name for {player_name}", key=f"replace_{idx}")
-                    new_role = st.text_input(f"Primary Role for {new_name}", key=f"role_{idx}")
+                    new_role = st.text_input(f"Role for {new_name}", key=f"role_{idx}")
                     new_format = st.selectbox(f"Format for {new_name}", ["ODI", "T20"], key=f"format_{idx}")
                     if new_name and new_role:
                         new_row = {
                             "Player Name": new_name,
-                            "Primary Role": new_role,
+                            "Role": new_role,
                             "Format": new_format
                         }
                         replacements[idx] = new_row
@@ -789,7 +786,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
                 mime="text/csv"
             )
         else:
-            st.error("❌ Required columns missing: ['Player Name', 'Primary Role', 'Format']")
+            st.error("❌ Required columns missing: ['Player Name', 'Role', 'Format']")
     else:
         st.info("📂 Please upload the Final XI CSV to proceed.")
 
