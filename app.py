@@ -319,6 +319,7 @@ elif selected_feature == "Main App Flow":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
+
 # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
     st.subheader("🔥 Pressure Heatmap XI")
@@ -326,25 +327,56 @@ elif selected_feature == "Pressure Heatmap XI":
 
     if pressure_file:
         df = pd.read_csv(pressure_file)
-        df.dropna(inplace=True)
 
-        required_cols = ["Player Name", "Role", "Death Overs Perf", "Clutch Game Perf", "Pressure Fielding", "Win Clutch Impact"]
+        st.write("📊 Uploaded Data Preview:")
+        st.dataframe(df.head())
+
+        required_cols = ["Player Name", "Primary Role", "Death Overs Perf", "Clutch Game Perf", "Pressure Fielding", "Win Clutch Impact"]
         missing_cols = [col for col in required_cols if col not in df.columns]
 
         if missing_cols:
             st.error(f"❌ Missing required columns: {', '.join(missing_cols)}")
             st.stop()
 
-        # ✅ Calculate Pressure Score from weighted components
-        df["Pressure_score"] = (
-            df["Death Overs Perf"] * 0.4 +
-            df["Clutch Game Perf"] * 0.3 +
-            df["Pressure Fielding"] * 0.2 +
-            df["Win Clutch Impact"] * 0.1
-        )
+        df.fillna(0, inplace=True)
+
+        # 🎯 Role-specific pressure score calculation
+        def calculate_pressure_score(row):
+            role = row["Primary Role"].lower()
+            if role == "bowler":
+                return round(
+                    row["Death Overs Perf"] * 0.4 +
+                    row["Clutch Game Perf"] * 0.3 +
+                    row["Pressure Fielding"] * 0.2 +
+                    row["Win Clutch Impact"] * 0.1, 3)
+            elif role in ["finisher"]:
+                return round(
+                    row["Death Overs Perf"] * 0.4 +
+                    row["Clutch Game Perf"] * 0.3 +
+                    row["Pressure Fielding"] * 0.2 +
+                    row["Win Clutch Impact"] * 0.1, 3)
+            elif role in ["anchor", "opener"]:
+                return round(
+                    row["Clutch Game Perf"] * 0.4 +
+                    row["Pressure Fielding"] * 0.3 +
+                    row["Win Clutch Impact"] * 0.3, 3)
+            elif role in ["floater"]:
+                return round(
+                    row["Clutch Game Perf"] * 0.35 +
+                    row["Death Overs Perf"] * 0.25 +
+                    row["Pressure Fielding"] * 0.25 +
+                    row["Win Clutch Impact"] * 0.15, 3)
+            else:  # All-rounder or undefined
+                return round(
+                    row["Death Overs Perf"] * 0.3 +
+                    row["Clutch Game Perf"] * 0.3 +
+                    row["Pressure Fielding"] * 0.2 +
+                    row["Win Clutch Impact"] * 0.2, 3)
+
+        df["Pressure_score"] = df.apply(calculate_pressure_score, axis=1)
 
         def assign_phase_suitability(row):
-            role = row["Role"].lower()
+            role = row["Primary Role"].lower()
             score = row["Pressure_score"]
             if role == "bowler":
                 if score >= 0.8:
@@ -353,7 +385,7 @@ elif selected_feature == "Pressure Heatmap XI":
                     return "Middle Overs"
                 else:
                     return "Powerplay"
-            else: # For batter and all-rounder
+            else:
                 if score >= 0.8:
                     return "Powerplay"
                 elif score >= 0.6:
@@ -362,12 +394,14 @@ elif selected_feature == "Pressure Heatmap XI":
                     return "Death Overs"
 
         def assign_match_situation(row):
-            if row["Pressure_score"] >= 0.75:
+            role = row["Primary Role"].lower()
+            score = row["Pressure_score"]
+            if score >= 0.75:
                 return "Clutch Moments"
-            elif row["Role"].lower() == "bowler":
-                return "Defending" if row["Pressure_score"] >= 0.6 else "Support Role"
-            elif row["Role"].lower() in ["batter", "all-rounder"]:
-                return "Chasing" if row["Pressure_score"] >= 0.6 else "Anchor / Setup"
+            elif role == "bowler":
+                return "Defending" if score >= 0.6 else "Support Role"
+            elif role in ["batter", "all-rounder"]:
+                return "Chasing" if score >= 0.6 else "Anchor / Setup"
             else:
                 return "Flexible"
 
@@ -394,18 +428,17 @@ elif selected_feature == "Pressure Heatmap XI":
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # ✅ Beehive Plot
         st.markdown("### 🐝 Beehive View: Impact Rating by Role")
         import numpy as np
-        role_map = {r: i for i, r in enumerate(df["Role"].unique())}
-        df["Jitter_x"] = df["Role"].map(role_map) + np.random.normal(0, 0.15, size=len(df))
+        role_map = {r: i for i, r in enumerate(df["Primary Role"].unique())}
+        df["Jitter_x"] = df["Primary Role"].map(role_map) + np.random.normal(0, 0.15, size=len(df))
 
         fig_bee = px.scatter(
             df,
             x="Jitter_x",
             y="Impact Rating",
             color="Pressure Zone",
-            hover_data=["Player Name", "Role", "Match Situation"],
+            hover_data=["Player Name", "Primary Role", "Match Situation"],
             title="Beehive Plot: Impact Rating by Role",
         )
         fig_bee.update_layout(
@@ -421,14 +454,14 @@ elif selected_feature == "Pressure Heatmap XI":
 
         st.markdown("### 💪 Top XI Under High Pressure")
         top_xi = df[df["Pressure Zone"] == "High"].sort_values(by="Impact Rating", ascending=False).head(11)
-        st.dataframe(top_xi[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
+        st.dataframe(top_xi[["Player Name", "Primary Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
 
         st.markdown("### ❌ Players Not Selected in Top XI (High Pressure)")
         picked_names = top_xi["Player Name"].tolist()
         unpicked_df = df[(df["Pressure Zone"] == "High") & (~df["Player Name"].isin(picked_names))]
 
         if not unpicked_df.empty:
-            st.dataframe(unpicked_df[["Player Name", "Role", "Impact Rating"]])
+            st.dataframe(unpicked_df[["Player Name", "Primary Role", "Impact Rating"]])
         else:
             st.info("✅ All High Pressure players are in the Top XI.")
 
@@ -442,23 +475,28 @@ elif selected_feature == "Pressure Heatmap XI":
             for i in range(num_manual):
                 st.markdown(f"#### Player {i+1}")
                 name = st.text_input(f"Player Name {i+1}", key=f"name_{i}")
-                role = st.selectbox(f"Role {i+1}", ["Batter", "Bowler", "All-rounder", "Wicketkeeper"], key=f"role_{i}")
+                role = st.selectbox(f"Primary Role {i+1}", ["Batter", "Bowler", "All-rounder", "Wicketkeeper", "Anchor", "Opener", "Finisher", "Floater"], key=f"role_{i}")
                 death_perf = st.number_input("Death Overs Perf", 0.0, 1.0, 0.0, 0.01, key=f"death_{i}")
                 clutch_perf = st.number_input("Clutch Game Perf", 0.0, 1.0, 0.0, 0.01, key=f"clutch_{i}")
                 fielding = st.number_input("Pressure Fielding", 0.0, 1.0, 0.0, 0.01, key=f"field_{i}")
                 win_impact = st.number_input("Win Clutch Impact", 0.0, 1.0, 0.0, 0.01, key=f"win_{i}")
 
-                pressure_score = round(
-                    death_perf * 0.4 + clutch_perf * 0.3 + fielding * 0.2 + win_impact * 0.1, 3
-                )
+                manual_row = {
+                    "Primary Role": role.lower(),
+                    "Death Overs Perf": death_perf,
+                    "Clutch Game Perf": clutch_perf,
+                    "Pressure Fielding": fielding,
+                    "Win Clutch Impact": win_impact
+                }
+                pressure_score = calculate_pressure_score(manual_row)
                 impact_rating = round(pressure_score * 10, 2)
 
                 phase = "Death Overs" if pressure_score >= 0.8 else "Middle Overs" if pressure_score >= 0.6 else "Powerplay"
-                match_sit = "Clutch Moments" if pressure_score >= 0.75 else ("Defending" if role == "Bowler" and pressure_score >= 0.6 else "Chasing")
+                match_sit = "Clutch Moments" if pressure_score >= 0.75 else ("Defending" if role.lower() == "bowler" and pressure_score >= 0.6 else "Chasing")
 
                 manual_players.append({
                     "Player Name": name,
-                    "Role": role,
+                    "Primary Role": role,
                     "Pressure_score": pressure_score,
                     "Phase Suitability": phase,
                     "Match Situation": match_sit,
@@ -481,14 +519,14 @@ elif selected_feature == "Pressure Heatmap XI":
                     })
 
                 st.markdown("### 🔍 Manual Players Pressure Validation")
-                st.dataframe(pd.DataFrame(validated_players)[[ "Player Name", "Role", "Pressure_score", "Impact Rating", "Pressure Validation" ]])
+                st.dataframe(pd.DataFrame(validated_players)[[ "Player Name", "Primary Role", "Pressure_score", "Impact Rating", "Pressure Validation" ]])
                 manual_players = validated_players
                 manual_validated = True
 
         combined_df = pd.concat([top_xi, pd.DataFrame(manual_players)], ignore_index=True)
 
         st.markdown("### 📋 Final Pressure XI")
-        st.dataframe(combined_df[["Player Name", "Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
+        st.dataframe(combined_df[["Player Name", "Primary Role", "Phase Suitability", "Match Situation", "Impact Rating"]])
 
         csv_out = combined_df.to_csv(index=False).encode("utf-8")
         st.download_button("⬇ Download Final Pressure Heatmap XI", csv_out, "final_pressure_heatmap_xi.csv", "text/csv")
@@ -498,7 +536,6 @@ elif selected_feature == "Pressure Heatmap XI":
 
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
 
 # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
