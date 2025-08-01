@@ -441,7 +441,7 @@ elif selected_feature == "Pressure Heatmap XI":
         manual_validated = False
 
         with st.expander("➕ Add Player Manually"):
-            num_manual = st.number_input("How many manual players do you want to add?", min_value=0, max_value=5, step=1)
+            num_manual = st.number_input("How many manual players do you want to add?", min_value=0, max_value=20, step=1)
 
             for i in range(num_manual):
                 st.markdown(f"#### Player {i+1}")
