@@ -501,150 +501,136 @@ elif selected_feature == "Pressure Heatmap XI":
 
 # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
-    st.subheader("⚖ Role Balance Auditor (With Role Distribution & Alerts)")
+    st.subheader("⚖️ Role Balance Auditor")
 
-    role_file = st.file_uploader("📂 Upload CSV with Player Roles", type="csv", key="role_balance_upload")
+    uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv", key="role_balance_upload")
 
-    if role_file:
-        df = pd.read_csv(role_file)
+    if uploaded_file:
+        import plotly.express as px
 
-        required_columns = ["Player Name", "Role", "Batting Position", "Format"]
+        df = pd.read_csv(uploaded_file)
+        df.dropna(subset=["Player Name", "Role", "Format"], inplace=True)
 
-        if all(col in df.columns for col in required_columns):
-            st.success("✅ File loaded with all required columns.")
+        format_selected = df["Format"].iloc[0].strip().upper()
+        st.write(f"📌 Format Detected: **{format_selected}**")
 
-            # Format-specific role limits
-            odi_role_limits = {
-                "Opener": (1, 2),
-                "Anchor": (1, 2),
-                "Finisher": (1, 2),
-                "All-rounder": (1, 3),
-                "Spinner": (1, 2),
-                "Pacer": (2, 4),
-                "Wicketkeeper": (1, 1),
-                "Death Specialist": (1, 2),
-                "Powerplay Specialist": (1, 2),
-                "Aggressor": (1, 3)
+        role_limits = {
+            "ODI": {
+                "Opener": (1, 2), "Top Order": (1, 2), "Middle Order": (2, 3),
+                "Finisher": (1, 2), "Wicketkeeper": (1, 1), "All-Rounder": (1, 3),
+                "Spinner": (1, 2), "Pacer": (2, 4), "Death Specialist": (1, 2),
+                "Powerplay Specialist": (1, 2), "Anchor": (1, 2), "Aggressor": (1, 2),
+                "Captain": (1, 1), "Vice-Captain": (1, 1)
+            },
+            "T20": {
+                "Opener": (1, 2), "Top Order": (1, 2), "Middle Order": (1, 2),
+                "Finisher": (2, 3), "Wicketkeeper": (1, 1), "All-Rounder": (1, 3),
+                "Spinner": (1, 2), "Pacer": (2, 4), "Death Specialist": (2, 3),
+                "Powerplay Specialist": (1, 2), "Anchor": (0, 1), "Aggressor": (2, 3),
+                "Captain": (1, 1), "Vice-Captain": (1, 1)
             }
+        }
 
-            t20_role_limits = {
-                "Opener": (2, 2),
-                "Anchor": (0, 1),
-                "Finisher": (2, 3),
-                "All-rounder": (2, 4),
-                "Spinner": (1, 2),
-                "Pacer": (2, 3),
-                "Wicketkeeper": (1, 1),
-                "Death Specialist": (1, 2),
-                "Powerplay Specialist": (1, 2),
-                "Aggressor": (2, 4)
-            }
+        selected_limits = role_limits.get(format_selected, {})
 
-            # Choose format (if multiple, allow filtering)
-            format_list = df["Format"].unique().tolist()
-            selected_format = st.selectbox("📌 Select Format to Audit", format_list)
+        def recommend_role(row):
+            pos = row.get("Batting Position", None)
+            sr = row.get("Strike Rate", None)
+            avg = row.get("Batting Average", None)
+            econ = row.get("Economy", None)
+            wk = row.get("Is Wicketkeeper", "No")
 
-            if selected_format == "ODI":
-                role_limits = odi_role_limits
-            elif selected_format == "T20":
-                role_limits = t20_role_limits
-            else:
-                st.warning("⚠ Unsupported format. Using default ODI limits.")
-                role_limits = odi_role_limits
+            if isinstance(wk, str) and wk.lower() == "yes":
+                return "Wicketkeeper"
+            try:
+                pos = int(pos)
+                sr = float(sr) if sr is not None else 0
+                avg = float(avg) if avg is not None else 0
+                econ = float(econ) if econ is not None else None
+            except:
+                return "Unknown"
 
-            # Filter by selected format
-            df_format = df[df["Format"] == selected_format]
+            if pos in [1, 2]:
+                return "Opener" if sr >= 120 else "Anchor"
+            elif pos in [3, 4]:
+                return "Top Order" if avg >= 35 else "Aggressor"
+            elif pos in [5, 6]:
+                return "Finisher" if sr >= 130 else "Middle Order"
+            elif pos >= 7:
+                return "All-Rounder" if avg > 20 else "Death Specialist"
+            return "Unknown"
 
-            role_counts = df_format["Role"].value_counts().reset_index()
-            role_counts.columns = ["Role", "Count"]
+        df["Recommended Role"] = df.apply(recommend_role, axis=1)
 
-            def get_balance_status(role, count):
-                if role not in role_limits:
-                    return "⚠ Unknown Role"
-                min_r, max_r = role_limits[role]
-                if count < min_r:
-                    return "🟠 Too Few"
-                elif count > max_r:
-                    return "🔴 Too Many"
-                else:
-                    return "🟢 Balanced"
+        # Actual Role Counts
+        role_counts = df["Role"].value_counts().to_dict()
 
-            role_counts["Balance Status"] = role_counts.apply(
-                lambda row: get_balance_status(row["Role"], row["Count"]), axis=1
+        # Role Audit Results
+        audit_results = []
+        for role, (min_required, max_allowed) in selected_limits.items():
+            actual_count = role_counts.get(role, 0)
+            status = "✅ Balanced"
+            if actual_count < min_required:
+                status = f"❌ Too Few (Min: {min_required})"
+            elif actual_count > max_allowed:
+                status = f"⚠️ Too Many (Max: {max_allowed})"
+            audit_results.append({
+                "Role": role,
+                "Actual Count": actual_count,
+                "Min Required": min_required,
+                "Max Allowed": max_allowed,
+                "Status": status
+            })
+
+        audit_df = pd.DataFrame(audit_results)
+
+        # Role Match
+        df["Role Match"] = df.apply(
+            lambda row: "✅" if row["Role"] == row["Recommended Role"] else "❌", axis=1
+        )
+
+        st.markdown("### 📋 Role Audit Summary")
+        st.dataframe(audit_df, use_container_width=True)
+
+        st.markdown("### 🧠 Recommended Roles vs Actual")
+        st.dataframe(df[["Player Name", "Role", "Recommended Role", "Role Match"]], use_container_width=True)
+
+        st.markdown("### 📊 Role Distribution Chart")
+        role_chart = pd.DataFrame(role_counts.items(), columns=["Role", "Count"])
+        st.bar_chart(role_chart.set_index("Role"))
+
+        # 🐝 Beehive Plot (Recommended Role vs Batting Avg)
+        st.markdown("### 🐝 Beehive Plot: Role vs Batting Avg")
+        if "Batting Average" in df.columns:
+            fig = px.strip(
+                df,
+                x="Recommended Role",
+                y="Batting Average",
+                color="Recommended Role",
+                stripmode="overlay",
+                hover_data=["Player Name"]
             )
+            st.plotly_chart(fig, use_container_width=True)
 
-            # Merge with player data
-            audit_df = df_format.merge(role_counts, on="Role", how="left")
+        # 🧩 Role Category Balance
+        role_to_category = {
+            "Opener": "Batter", "Top Order": "Batter", "Middle Order": "Batter",
+            "Finisher": "Batter", "Anchor": "Batter", "Aggressor": "Batter",
+            "Pacer": "Bowler", "Spinner": "Bowler", "Death Specialist": "Bowler",
+            "Powerplay Specialist": "Bowler", "All-Rounder": "All-Rounder",
+            "Wicketkeeper": "Wicketkeeper"
+        }
 
-            audit_df = audit_df[[ "Player Name", "Role", "Batting Position", "Format", "Count", "Balance Status" ]]
+        df["Category"] = df["Recommended Role"].map(role_to_category)
+        cat_counts = df["Category"].value_counts()
 
-            # 📋 Display Data
-            st.subheader(f"📋 Role Balance Report - {selected_format}")
-            st.dataframe(audit_df)
+        st.markdown("### 🧩 Player Type Distribution (Category Balance)")
+        st.dataframe(cat_counts.reset_index().rename(columns={"index": "Category", "Category": "Count"}))
 
-            # 🔍 Suggestions
-            imbalanced_roles = role_counts[role_counts["Balance Status"] != "🟢 Balanced"]
-            if not imbalanced_roles.empty:
-                st.warning("🔍 Suggestions to improve balance:")
-                for _, row in imbalanced_roles.iterrows():
-                    role = row["Role"]
-                    count = row["Count"]
-                    min_r, max_r = role_limits.get(role, (0, 0))
-                    if count < min_r:
-                        st.markdown(f"- ➕ Consider **adding** more players for role: `{role}` (Current: {count}, Minimum Required: {min_r})")
-                    elif count > max_r:
-                        st.markdown(f"- ➖ Consider **removing** some players from role: `{role}` (Current: {count}, Maximum Allowed: {max_r})")
+        st.bar_chart(cat_counts)
 
-            # ⬇ Download
-            csv_data = audit_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇ Download Role Balance CSV",
-                data=csv_data,
-                file_name="role_balance_audit.csv",
-                mime="text/csv"
-            )
-
-            # 📊 Pie & Bar Charts
-            st.subheader("📈 Role Distribution Overview")
-
-            pie_chart = px.pie(
-                role_counts, names="Role", values="Count",
-                title="Role Distribution in Current XI"
-            )
-            st.plotly_chart(pie_chart, use_container_width=True)
-
-            bar_chart = px.bar(
-                role_counts, x="Role", y="Count", color="Balance Status", text_auto=True,
-                title="Role Count with Balance Status"
-            )
-            st.plotly_chart(bar_chart, use_container_width=True)
-
-            # 🐝 Beehive (Beeswarm-style) Plot
-            st.subheader("🐝 Beeswarm View of Players by Role")
-
-            audit_df["Jitter"] = np.random.uniform(-0.3, 0.3, size=len(audit_df))
-
-            beehive_fig = px.scatter(
-                audit_df,
-                x="Jitter",
-                y="Role",
-                color="Balance Status",
-                hover_data=["Player Name", "Batting Position", "Format"],
-                title="Beehive Plot: Player Spread Across Roles",
-                size_max=10,
-                height=600
-            )
-
-            beehive_fig.update_traces(marker=dict(size=12, opacity=0.7, line=dict(width=1, color='black')))
-            beehive_fig.update_xaxes(visible=False, showticklabels=False)
-
-            st.plotly_chart(beehive_fig, use_container_width=True)
-
-        else:
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
     else:
-        st.info("📁 Please upload a CSV file with roles to continue.")
+        st.info("Please upload a Final XI CSV to continue.")
 
     # --- Signature Footer ---
     st.markdown("---")
