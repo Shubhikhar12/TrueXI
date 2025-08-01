@@ -119,8 +119,6 @@ if selected_feature == "Subscription Plans":
     🕐 We’ll verify payment and manually activate your access.
     """)
 
-    st.markdown("---")
-    st.markdown("💡 *Note: Auto-payment system is coming soon!*")
 
 
 # ------------------ MAIN APP FLOW ------------------
@@ -357,7 +355,7 @@ elif selected_feature == "Pressure Heatmap XI":
                     return "Middle Overs"
                 else:
                     return "Powerplay"
-            else:
+            else: # For batter and all-rounder
                 if score >= 0.8:
                     return "Powerplay"
                 elif score >= 0.6:
