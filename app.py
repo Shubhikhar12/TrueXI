@@ -513,22 +513,51 @@ elif selected_feature == "Role Balance Auditor":
         if all(col in df.columns for col in required_columns):
             st.success("✅ File loaded with all required columns.")
 
-            # Recommended min and max for roles
-            role_limits = {
-                "Opener": (2, 3),
+            # Format-specific role limits
+            odi_role_limits = {
+                "Opener": (1, 2),
                 "Anchor": (1, 2),
-                "Floater": (1, 2),
                 "Finisher": (1, 2),
                 "All-rounder": (1, 3),
                 "Spinner": (1, 2),
-                "Fast Bowler": (2, 3),
-                "Death Specialist": (1, 2)
+                "Pacer": (2, 4),
+                "Wicketkeeper": (1, 1),
+                "Death Specialist": (1, 2),
+                "Powerplay Specialist": (1, 2),
+                "Aggressor": (1, 3)
             }
 
-            role_counts = df["Role"].value_counts().reset_index()
+            t20_role_limits = {
+                "Opener": (2, 2),
+                "Anchor": (0, 1),
+                "Finisher": (2, 3),
+                "All-rounder": (2, 4),
+                "Spinner": (1, 2),
+                "Pacer": (2, 3),
+                "Wicketkeeper": (1, 1),
+                "Death Specialist": (1, 2),
+                "Powerplay Specialist": (1, 2),
+                "Aggressor": (2, 4)
+            }
+
+            # Choose format (if multiple, allow filtering)
+            format_list = df["Format"].unique().tolist()
+            selected_format = st.selectbox("📌 Select Format to Audit", format_list)
+
+            if selected_format == "ODI":
+                role_limits = odi_role_limits
+            elif selected_format == "T20":
+                role_limits = t20_role_limits
+            else:
+                st.warning("⚠ Unsupported format. Using default ODI limits.")
+                role_limits = odi_role_limits
+
+            # Filter by selected format
+            df_format = df[df["Format"] == selected_format]
+
+            role_counts = df_format["Role"].value_counts().reset_index()
             role_counts.columns = ["Role", "Count"]
 
-            # Role balance checker with emoji
             def get_balance_status(role, count):
                 if role not in role_limits:
                     return "⚠ Unknown Role"
@@ -545,13 +574,12 @@ elif selected_feature == "Role Balance Auditor":
             )
 
             # Merge with player data
-            audit_df = df.merge(role_counts, on="Role", how="left")
+            audit_df = df_format.merge(role_counts, on="Role", how="left")
 
-            # Reorder columns
             audit_df = audit_df[[ "Player Name", "Role", "Batting Position", "Format", "Count", "Balance Status" ]]
 
             # 📋 Display Data
-            st.subheader("📋 Role Balance Report")
+            st.subheader(f"📋 Role Balance Report - {selected_format}")
             st.dataframe(audit_df)
 
             # 🔍 Suggestions
@@ -594,7 +622,6 @@ elif selected_feature == "Role Balance Auditor":
             # 🐝 Beehive (Beeswarm-style) Plot
             st.subheader("🐝 Beeswarm View of Players by Role")
 
-            # Add a jitter column for beehive effect
             audit_df["Jitter"] = np.random.uniform(-0.3, 0.3, size=len(audit_df))
 
             beehive_fig = px.scatter(
