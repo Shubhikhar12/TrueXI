@@ -499,6 +499,7 @@ elif selected_feature == "Pressure Heatmap XI":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
+
 # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
     st.subheader("⚖️ Role Balance Auditor")
@@ -681,7 +682,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
             st.markdown(f"🧱 **Pitch Type:** `{pitch_type}`")
             st.markdown(f"🕐 **Match Time:** `{match_time}`")
-            st.markdown(f"🧭 **Toss Recommendation:** The captain should **opt to `{suggested_toss}` first** if they win the toss.")
+            st.markdown(f"🧽 **Toss Recommendation:** The captain should **opt to `{suggested_toss}` first** if they win the toss.")
             st.info(f"📌 **Reason:** {toss_reason}")
 
             def classify_player(row):
@@ -747,7 +748,6 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             st.subheader("📋 Adaptive Classification")
             st.dataframe(df)
 
-            # ---------- BEEHIVE / BEESWARM STYLE STRIP PLOT ----------
             import plotly.express as px
             st.subheader("🐝 Beehive View of Player Adaptiveness")
             fig = px.strip(
@@ -763,7 +763,6 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             fig.update_traces(jitter=0.6, marker_size=12)
             st.plotly_chart(fig, use_container_width=True)
 
-            # ---------- REPLACEMENT LOGIC ----------
             not_ideal_players = df[df["Pitch Adaptiveness"] == "❌ Not Ideal"]
 
             if not not_ideal_players.empty:
@@ -803,7 +802,5 @@ elif selected_feature == "Pitch Adaptive XI Selector":
     else:
         st.info("📂 Please upload the Final XI CSV to proceed.")
 
-    # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
