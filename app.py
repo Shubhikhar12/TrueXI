@@ -582,13 +582,13 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
             def recommend_toss_decision(pitch_type, match_time):
                 if pitch_type == "Red Soil" and match_time == "Day":
-                    return "Bat", "Red soil dries out under sunlight. Spinners get more turn later, making it harder to bat second."
+                    return "Bat", "Red soil crumbles and deteriorates more in day games. The dry surface assists spinners early, and chasing becomes harder as the pitch breaks down."
                 elif pitch_type == "Red Soil" and match_time == "Night":
-                    return "Field", "Dew neutralizes spin at night on red soil. Easier to chase."
+                    return "Field", "At night, batting becomes easier early on before turn and variable bounce develop. Dew also reduces spin effectiveness, making chasing more favorable."
                 elif pitch_type == "Black Soil" and match_time == "Day":
-                    return "Field", "Black soil retains moisture early. Bowling first helps, then pitch slows for batting."
+                    return "Bat", "Black soil holds moisture longer but slows down as the match progresses. Spin starts to grip more, and stroke-making becomes harder in the second innings."
                 elif pitch_type == "Black Soil" and match_time == "Night":
-                    return "Bat", "Black soil gets harder and bouncier at night. Dew is less effective, better to set target."
+                    return "Field", "Dew at night reduces spin and helps the ball skid under lights. The pitch stays better for batting in the second innings, making chasing the safer option."
 
             suggested_toss, toss_reason = recommend_toss_decision(pitch_type, match_time)
 
