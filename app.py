@@ -56,7 +56,6 @@ st.markdown("""
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased XI Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
-    "Subscription Plans",
     "Main App Flow",
     "Pressure Heatmap XI",
     "Role Balance Auditor",
@@ -93,34 +92,9 @@ def calculate_leadership_score(df):
     df["Leadership_Score"] = 0.6 * df["Performance_score"] + 0.4 * df["Fame_score"]
     return df
 
-    # -------------- SUBSCRIPTION PLANS PAGE ----------------
-if selected_feature == "Subscription Plans":
-    st.title("📦 Subscription Plans – TrueXI Selector")
-    st.markdown("Choose a plan below and contact us to activate it!")
-
-    plans = {
-        "🟢 XIStart Engine (₹199/month)": "✅ View-only Unbiased XI",
-        "🟡 PressurePulse (₹399/month)": "✅ Heatmap XI + Download + All XIStart Engine features",
-        "🟠 RoleMatrix Pro (₹699/month)": "✅ Role Balance Auditor + All PressurePulse features",
-        "🔵 GameSense Elite (₹999/month)": "✅ Pitch Adaptive XI + All Pro features"
-    }
-
-    plan_choice = st.selectbox("Select a Plan", list(plans.keys()))
-    st.markdown(f"**Features:** {plans[plan_choice]}")
-
-    st.markdown("### 📞 Contact to Subscribe")
-
-    st.info("""
-    To activate your selected plan, please contact us:
-
-    📧 Email: **nihirakhare12@gmail.com**  
-    📱 WhatsApp/Call: **+91-7897138303**
-
-    🕐 We’ll verify payment and manually activate your access.
-    """)
 
 # ------------------ MAIN APP FLOW ------------------
-elif selected_feature == "Main App Flow":
+if selected_feature == "Main App Flow":
 
     if st.session_state.step == 0:
         uploaded_file = st.file_uploader("\U0001F4C1 Upload Final XI CSV", type="csv")
