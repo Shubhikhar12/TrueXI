@@ -293,6 +293,17 @@ if selected_feature == "Main App Flow":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
+
+    st.markdown(
+    """
+    <hr style="margin-top: 50px;"/>
+    <div style='text-align: center; color: gray; font-size: 14px;'>
+        © 2025 <b>TrueXI</b>. All rights reserved.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 # ------------------ PRESSURE HEATMAP XI ------------------
 elif selected_feature == "Pressure Heatmap XI":
     st.subheader("🔥 Pressure Heatmap XI")
@@ -428,6 +439,16 @@ elif selected_feature == "Pressure Heatmap XI":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
+    st.markdown(
+    """
+    <hr style="margin-top: 50px;"/>
+    <div style='text-align: center; color: gray; font-size: 14px;'>
+        © 2025 <b>TrueXI</b>. All rights reserved.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 
 # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
@@ -548,6 +569,15 @@ elif selected_feature == "Role Balance Auditor":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
+    st.markdown(
+    """
+    <hr style="margin-top: 50px;"/>
+    <div style='text-align: center; color: gray; font-size: 14px;'>
+        © 2025 <b>TrueXI</b>. All rights reserved.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 # ------------------ PITCH ADAPTIVE XI SELECTOR ------------------
 elif selected_feature == "Pitch Adaptive XI Selector":
@@ -716,3 +746,13 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+    st.markdown(
+    """
+    <hr style="margin-top: 50px;"/>
+    <div style='text-align: center; color: gray; font-size: 14px;'>
+        © 2025 <b>TrueXI</b>. All rights reserved.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
