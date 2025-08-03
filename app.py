@@ -590,6 +590,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
         if all(col in df.columns for col in ["Player Name", "Role", "Format"]):
 
+            # Pitch mapping by venue
             all_venues = {
                 "Wankhede Stadium": "Red Soil",
                 "Brabourne Stadium": "Red Soil",
@@ -607,7 +608,6 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
             selected_venue = st.selectbox("📍 Select Match Venue", list(all_venues.keys()))
             pitch_type = all_venues[selected_venue]
-
             match_time = st.selectbox("🕐 Match Time", ["Day", "Night"])
 
             def recommend_toss_decision(pitch_type, match_time):
@@ -616,7 +616,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
                 elif pitch_type == "Red Soil" and match_time == "Night":
                     return "Field", "At night, batting becomes easier early on before turn and variable bounce develop. Dew also reduces spin effectiveness, making chasing more favorable."
                 elif pitch_type == "Black Soil" and match_time == "Day":
-                    return "Bat", "Black soil holds moisture longer but slows down as the match progresses. Spin starts to grip more, and stroke-making becomes harder in the second innings."
+                    return "Field", "Black soil holds moisture longer but slows down as the match progresses. Spin starts to grip more, and stroke-making becomes harder in the second innings."
                 elif pitch_type == "Black Soil" and match_time == "Night":
                     return "Field", "Dew at night reduces spin and helps the ball skid under lights. The pitch stays better for batting in the second innings, making chasing the safer option."
 
@@ -627,6 +627,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             st.markdown(f"🧽 **Toss Recommendation:** The captain should **opt to `{suggested_toss}` first** if they win the toss.")
             st.info(f"📌 **Reason:** {toss_reason}")
 
+            # ------------- Classification Function -------------
             def classify_player(row):
                 role = row["Role"].lower()
 
@@ -665,17 +666,9 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             df["Pitch Adaptiveness"] = df.apply(classify_player, axis=1)
 
             role_priority = {
-                "opener": 0,
-                "anchor": 0,
-                "floater": 0,
-                "finisher": 0,
-                "spinner": 1,
-                "fast": 1,
-                "seamer": 1,
-                "death": 1,
-                "spin all-rounder": 2,
-                "pace-all-rounder": 2,
-                "all-rounder": 2,
+                "opener": 0, "anchor": 0, "floater": 0, "finisher": 0,
+                "spinner": 1, "fast": 1, "seamer": 1, "death": 1,
+                "spin all-rounder": 2, "pace-all-rounder": 2, "all-rounder": 2,
             }
 
             def get_sort_priority(role):
@@ -693,42 +686,89 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             import plotly.express as px
             st.subheader("🐝 Beehive View of Player Adaptiveness")
             fig = px.strip(
-                df,
-                x="Pitch Adaptiveness",
-                y="Role",
-                color="Pitch Adaptiveness",
-                hover_name="Player Name",
-                stripmode="overlay",
-                title="Beehive Plot: Player Roles vs Pitch Suitability",
-                height=500,
+                df, x="Pitch Adaptiveness", y="Role", color="Pitch Adaptiveness",
+                hover_name="Player Name", stripmode="overlay",
+                title="Beehive Plot: Player Roles vs Pitch Suitability", height=500,
             )
             fig.update_traces(jitter=0.6, marker_size=12)
             st.plotly_chart(fig, use_container_width=True)
 
+            # ---------------- MANUAL PLAYER ADDITION ----------------
+            st.subheader("➕ Manually Add New Player")
+
+            manual_name = st.text_input("Player Name")
+            manual_role = st.selectbox("Role", list(role_priority.keys()), key="manual_role")
+            manual_format = st.selectbox("Format", ["ODI", "T20"], key="manual_format")
+
+            # Dynamic metrics input
+            if manual_role in ["opener", "anchor", "floater", "finisher"]:
+                batting_avg = st.number_input("Batting Average", min_value=0.0)
+                strike_rate = st.number_input("Strike Rate", min_value=0.0)
+                metric_valid = batting_avg > 35 and strike_rate > 130
+            elif manual_role in ["spinner", "seamer", "fast", "death"]:
+                economy = st.number_input("Bowling Economy", min_value=0.0)
+                wickets = st.number_input("Wickets per Match", min_value=0.0)
+                metric_valid = economy < 7.5 and wickets > 1.5
+            else:
+                batting_avg = st.number_input("Batting Average", min_value=0.0)
+                wickets = st.number_input("Wickets per Match", min_value=0.0)
+                metric_valid = batting_avg > 25 and wickets > 1.0
+
+            if st.button("🔍 Calculate Player Suitability"):
+                if manual_name and manual_role and manual_format:
+                    suitability = classify_player({"Role": manual_role})
+                    if metric_valid:
+                        df.loc[len(df)] = {
+                            "Player Name": manual_name,
+                            "Role": manual_role,
+                            "Format": manual_format,
+                            "Pitch Adaptiveness": suitability
+                        }
+                        st.success(f"✅ `{manual_name}` added with classification: **{suitability}**")
+                    else:
+                        st.error("❌ Metrics don't meet recommended thresholds for this role.")
+
+            # ---------------- REPLACEMENTS ----------------
             not_ideal_players = df[df["Pitch Adaptiveness"] == "❌ Not Ideal"]
 
             if not not_ideal_players.empty:
-                st.warning("❌ Some players are not ideal for selected pitch. Please suggest replacements.")
+                st.warning("❌ Some players are not ideal. Suggest replacements with proper metrics.")
                 replacements = {}
+
                 for idx, row in not_ideal_players.iterrows():
-                    player_name = row["Player Name"]
-                    st.markdown(f"🔁 Replace `{player_name}`:")
-                    new_name = st.text_input(f"New Player Name for {player_name}", key=f"replace_{idx}")
-                    new_role = st.text_input(f"Role for {new_name}", key=f"role_{idx}")
+                    old_name = row["Player Name"]
+                    st.markdown(f"🔁 Replace `{old_name}`")
+
+                    new_name = st.text_input(f"New Player Name for {old_name}", key=f"replace_{idx}")
+                    new_role = st.selectbox(f"Role for {new_name}", list(role_priority.keys()), key=f"role_{idx}")
                     new_format = st.selectbox(f"Format for {new_name}", ["ODI", "T20"], key=f"format_{idx}")
-                    if new_name and new_role:
-                        new_row = {
+
+                    # Metric inputs for the new player
+                    if new_role in ["opener", "anchor", "floater", "finisher"]:
+                        bat_avg = st.number_input(f"Batting Avg for {new_name}", min_value=0.0, key=f"batavg_{idx}")
+                        sr = st.number_input(f"Strike Rate for {new_name}", min_value=0.0, key=f"sr_{idx}")
+                        valid = bat_avg > 35 and sr > 130
+                    elif new_role in ["spinner", "seamer", "fast", "death"]:
+                        eco = st.number_input(f"Economy for {new_name}", min_value=0.0, key=f"eco_{idx}")
+                        wkts = st.number_input(f"Wkts/Match for {new_name}", min_value=0.0, key=f"wkts_{idx}")
+                        valid = eco < 7.5 and wkts > 1.5
+                    else:
+                        bat_avg = st.number_input(f"Batting Avg for {new_name}", min_value=0.0, key=f"batavg_{idx}")
+                        wkts = st.number_input(f"Wickets/Match for {new_name}", min_value=0.0, key=f"wkts_{idx}")
+                        valid = bat_avg > 25 and wkts > 1.0
+
+                    if new_name and new_role and valid:
+                        replacements[idx] = {
                             "Player Name": new_name,
                             "Role": new_role,
-                            "Format": new_format
+                            "Format": new_format,
+                            "Pitch Adaptiveness": classify_player({"Role": new_role})
                         }
-                        replacements[idx] = new_row
 
-                if replacements:
-                    for idx, new_data in replacements.items():
-                        new_data["Pitch Adaptiveness"] = classify_player(new_data)
-                        df.loc[idx] = new_data
+                for idx, new_data in replacements.items():
+                    df.loc[idx] = new_data
 
+            # ---------------- FINAL OUTPUT ----------------
             st.markdown("✅ Final Pitch Adaptive XI")
             st.dataframe(df)
 
@@ -747,12 +787,9 @@ elif selected_feature == "Pitch Adaptive XI Selector":
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
-    st.markdown(
-    """
-    <hr style="margin-top: 50px;"/>
-    <div style='text-align: center; color: gray; font-size: 14px;'>
-        © 2025 <b>TrueXI</b>. All rights reserved.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+    st.markdown("""
+        <hr style="margin-top: 50px;"/>
+        <div style='text-align: center; color: gray; font-size: 14px;'>
+            © 2025 <b>TrueXI</b>. All rights reserved.
+        </div>
+    """, unsafe_allow_html=True)
