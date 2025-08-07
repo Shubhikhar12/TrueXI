@@ -562,7 +562,6 @@ elif selected_feature == "Role Balance Auditor":
     unsafe_allow_html=True
 )
 
-# ------------------ PITCH ADAPTIVE XI SELECTOR ------------------
 elif selected_feature == "Pitch Adaptive XI Selector":
     st.subheader("🏟️ Pitch Adaptive XI Selector")
 
@@ -571,74 +570,87 @@ elif selected_feature == "Pitch Adaptive XI Selector":
     if uploaded_adaptive_file:
         df = pd.read_csv(uploaded_adaptive_file)
 
-        if all(col in df.columns for col in ["Player Name", "Role", "Format"]):
+        required_columns = [
+            "Player Name", "Role", "Format", "Batting Avg", "Batting SR",
+            "Bowling Econ", "Bowling Avg", "Batting Rating", "Bowling Rating",
+            "All-Round Rating"
+        ]
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = None
 
-            # Pitch mapping by venue
+        if all(col in df.columns for col in ["Player Name", "Role", "Format"]):
+            # --- Venue and Pitch Setup ---
             all_venues = {
-                "Wankhede Stadium": "Red Soil",
-                "Brabourne Stadium": "Red Soil",
-                "MA Chidambaram Stadium": "Red Soil",
-                "M. Chinnaswamy Stadium": "Red Soil",
-                "Sawai Mansingh Stadium": "Red Soil",
-                "Narendra Modi Stadium": "Black Soil",
-                "Ekana Stadium": "Black Soil",
-                "Arun Jaitley Stadium": "Black Soil",
-                "Rajiv Gandhi Intl Stadium": "Black Soil",
-                "Barsapara Stadium": "Black Soil",
-                "Holkar Stadium": "Black Soil",
-                "Eden Gardens": "Red Soil",
+                "Wankhede Stadium": "Red Soil", "Brabourne Stadium": "Red Soil", "MA Chidambaram Stadium": "Red Soil",
+                "M. Chinnaswamy Stadium": "Red Soil", "Sawai Mansingh Stadium": "Red Soil", "Eden Gardens": "Red Soil",
+                "Narendra Modi Stadium": "Black Soil", "Ekana Stadium": "Black Soil", "Arun Jaitley Stadium": "Black Soil",
+                "Rajiv Gandhi Intl Stadium": "Black Soil", "Barsapara Stadium": "Black Soil", "Holkar Stadium": "Black Soil"
+            }
+
+            venue_thresholds = {
+                "Wankhede Stadium": {"bat_avg": 32, "bat_sr": 140, "bat_rating": 6.5, "bowl_avg": 28, "bowl_econ": 8.0},
+                "Brabourne Stadium": {"bat_avg": 30, "bat_sr": 135, "bat_rating": 6.3, "bowl_avg": 26, "bowl_econ": 7.6},
+                "MA Chidambaram Stadium": {"bat_avg": 30, "bat_sr": 125, "bat_rating": 6.0, "bowl_avg": 24, "bowl_econ": 6.8},
+                "M. Chinnaswamy Stadium": {"bat_avg": 35, "bat_sr": 145, "bat_rating": 7.0, "bowl_avg": 32, "bowl_econ": 9.0},
+                "Sawai Mansingh Stadium": {"bat_avg": 31, "bat_sr": 132, "bat_rating": 6.2, "bowl_avg": 27, "bowl_econ": 7.4},
+                "Narendra Modi Stadium": {"bat_avg": 28, "bat_sr": 130, "bat_rating": 6.3, "bowl_avg": 25, "bowl_econ": 7.5},
+                "Ekana Stadium": {"bat_avg": 26, "bat_sr": 122, "bat_rating": 5.8, "bowl_avg": 22, "bowl_econ": 6.5},
+                "Arun Jaitley Stadium": {"bat_avg": 29, "bat_sr": 128, "bat_rating": 6.1, "bowl_avg": 23, "bowl_econ": 6.9},
+                "Rajiv Gandhi Intl Stadium": {"bat_avg": 30, "bat_sr": 130, "bat_rating": 6.2, "bowl_avg": 24, "bowl_econ": 7.0},
+                "Barsapara Stadium": {"bat_avg": 31, "bat_sr": 134, "bat_rating": 6.4, "bowl_avg": 25, "bowl_econ": 7.2},
+                "Holkar Stadium": {"bat_avg": 33, "bat_sr": 138, "bat_rating": 6.7, "bowl_avg": 26, "bowl_econ": 7.8},
+                "Eden Gardens": {"bat_avg": 32, "bat_sr": 135, "bat_rating": 6.5, "bowl_avg": 27, "bowl_econ": 7.6},
             }
 
             selected_venue = st.selectbox("📍 Select Match Venue", list(all_venues.keys()))
             pitch_type = all_venues[selected_venue]
             match_time = st.selectbox("🕐 Match Time", ["Day", "Night"])
 
-            def recommend_toss_decision(pitch_type, match_time):
-                if pitch_type == "Red Soil" and match_time == "Day":
-                    return "Bat", "Red soil crumbles and deteriorates more in day games. The dry surface assists spinners early, and chasing becomes harder as the pitch breaks down."
-                elif pitch_type == "Red Soil" and match_time == "Night":
-                    return "Field", "At night, batting becomes easier early on before turn and variable bounce develop. Dew also reduces spin effectiveness, making chasing more favorable."
-                elif pitch_type == "Black Soil" and match_time == "Day":
-                    return "Field", "Black soil holds moisture longer but slows down as the match progresses. Spin starts to grip more, and stroke-making becomes harder in the second innings."
-                elif pitch_type == "Black Soil" and match_time == "Night":
-                    return "Field", "Dew at night reduces spin and helps the ball skid under lights. The pitch stays better for batting in the second innings, making chasing the safer option."
-
-            suggested_toss, toss_reason = recommend_toss_decision(pitch_type, match_time)
-
             st.markdown(f"🧱 **Pitch Type:** `{pitch_type}`")
             st.markdown(f"🕐 **Match Time:** `{match_time}`")
-            st.markdown(f"🧽 **Toss Recommendation:** The captain should **opt to `{suggested_toss}` first** if they win the toss.")
+
+            def recommend_toss_decision(pitch_type, match_time):
+                if pitch_type == "Red Soil" and match_time == "Day":
+                    return "Bat", "Red soil crumbles and deteriorates more in day games..."
+                elif pitch_type == "Red Soil" and match_time == "Night":
+                    return "Field", "At night, batting becomes easier early on..."
+                elif pitch_type == "Black Soil" and match_time == "Day":
+                    return "Field", "Black soil holds moisture longer but slows down..."
+                elif pitch_type == "Black Soil" and match_time == "Night":
+                    return "Field", "Dew at night reduces spin and helps the ball skid..."
+
+            suggested_toss, toss_reason = recommend_toss_decision(pitch_type, match_time)
+            st.markdown(f"🧽 **Toss Recommendation:** The captain should **opt to `{suggested_toss}` first**.")
             st.info(f"📌 **Reason:** {toss_reason}")
 
-            # ------------- Classification Function -------------
-            def classify_player(row):
+            def classify_player(row, ptype=None, mtime=None):
                 role = row["Role"].lower()
+                ptype = ptype or pitch_type
+                mtime = mtime or match_time
 
-                if pitch_type == "Red Soil" and match_time == "Day":
+                if ptype == "Red Soil" and mtime == "Day":
                     if any(x in role for x in ["spinner", "spin all-rounder", "anchor"]):
                         return "✅ Strong"
                     elif any(x in role for x in ["opener", "floater"]):
                         return "⚠️ Moderate"
                     else:
                         return "❌ Not Ideal"
-
-                elif pitch_type == "Red Soil" and match_time == "Night":
+                elif ptype == "Red Soil" and mtime == "Night":
                     if any(x in role for x in ["fast", "death", "finisher", "seamer", "floater"]):
                         return "✅ Strong"
                     elif any(x in role for x in ["opener", "spinner", "spin all-rounder"]):
                         return "⚠️ Moderate"
                     else:
                         return "❌ Not Ideal"
-
-                elif pitch_type == "Black Soil" and match_time == "Day":
+                elif ptype == "Black Soil" and mtime == "Day":
                     if any(x in role for x in ["fast", "seamer", "anchor", "pace-all-rounder"]):
                         return "✅ Strong"
                     elif any(x in role for x in ["spinner", "opener"]):
                         return "⚠️ Moderate"
                     else:
                         return "❌ Not Ideal"
-
-                elif pitch_type == "Black Soil" and match_time == "Night":
+                elif ptype == "Black Soil" and mtime == "Night":
                     if any(x in role for x in ["fast", "death", "finisher", "opener"]):
                         return "✅ Strong"
                     elif any(x in role for x in ["spinner", "floater"]):
@@ -646,7 +658,7 @@ elif selected_feature == "Pitch Adaptive XI Selector":
                     else:
                         return "❌ Not Ideal"
 
-            df["Pitch Adaptiveness"] = df.apply(classify_player, axis=1)
+            df["Pitch Adaptiveness"] = df.apply(lambda row: classify_player(row), axis=1)
 
             role_priority = {
                 "opener": 0, "anchor": 0, "floater": 0, "finisher": 0,
@@ -676,92 +688,67 @@ elif selected_feature == "Pitch Adaptive XI Selector":
             fig.update_traces(jitter=0.6, marker_size=12)
             st.plotly_chart(fig, use_container_width=True)
 
-            # ---------------- MANUAL PLAYER ADDITION ----------------
-            st.subheader("➕ Manually Add New Player")
+            # ------------------- NEW: MANUAL MULTI-ENTRY -------------------
+            st.subheader("➕ Add Multiple Players Manually")
+            num_manual = st.number_input("🔢 How many players do you want to add?", min_value=0, max_value=15, step=1)
 
-            manual_name = st.text_input("Player Name")
-            manual_role = st.selectbox("Role", list(role_priority.keys()), key="manual_role")
-            manual_format = st.selectbox("Format", ["ODI", "T20"], key="manual_format")
+            manual_players = []
+            for i in range(num_manual):
+                with st.expander(f"🧑 Player {i+1} Details"):
+                    player = {}
+                    player["Player Name"] = st.text_input(f"Name {i+1}", key=f"name_{i}")
+                    player["Role"] = st.selectbox(f"Role {i+1}", list(role_priority.keys()), key=f"role_{i}")
+                    player["Format"] = st.selectbox(f"Format {i+1}", ["ODI", "T20"], key=f"format_{i}")
+                    player["Venue"] = st.selectbox(f"Venue for Player {i+1}", list(all_venues.keys()), key=f"venue_{i}")
+                    pitch = all_venues[player["Venue"]]
+                    threshold = venue_thresholds[player["Venue"]]
 
-            # Dynamic metrics input
-            if manual_role in ["opener", "anchor", "floater", "finisher"]:
-                batting_avg = st.number_input("Batting Average", min_value=0.0)
-                strike_rate = st.number_input("Strike Rate", min_value=0.0)
-                metric_valid = batting_avg > 35 and strike_rate > 130
-            elif manual_role in ["spinner", "seamer", "fast", "death"]:
-                economy = st.number_input("Bowling Economy", min_value=0.0)
-                wickets = st.number_input("Wickets per Match", min_value=0.0)
-                metric_valid = economy < 7.5 and wickets > 1.5
-            else:
-                batting_avg = st.number_input("Batting Average", min_value=0.0)
-                wickets = st.number_input("Wickets per Match", min_value=0.0)
-                metric_valid = batting_avg > 25 and wickets > 1.0
-
-            if st.button("🔍 Calculate Player Suitability"):
-                if manual_name and manual_role and manual_format:
-                    suitability = classify_player({"Role": manual_role})
-                    if metric_valid:
-                        df.loc[len(df)] = {
-                            "Player Name": manual_name,
-                            "Role": manual_role,
-                            "Format": manual_format,
-                            "Pitch Adaptiveness": suitability
-                        }
-                        st.success(f"✅ `{manual_name}` added with classification: **{suitability}**")
+                    # Role specific inputs
+                    if player["Role"] in ["opener", "anchor", "floater", "finisher"]:
+                        player["Batting Avg"] = st.number_input(f"Batting Avg {i+1}", key=f"ba_{i}")
+                        player["Batting SR"] = st.number_input(f"Strike Rate {i+1}", key=f"sr_{i}")
+                        player["Batting Rating"] = st.number_input(f"Batting Rating {i+1}", key=f"br_{i}")
+                    elif player["Role"] in ["spinner", "seamer", "fast", "death"]:
+                        player["Bowling Avg"] = st.number_input(f"Bowling Avg {i+1}", key=f"bavg_{i}")
+                        player["Bowling Econ"] = st.number_input(f"Econ Rate {i+1}", key=f"econ_{i}")
+                        player["Bowling Rating"] = st.number_input(f"Bowling Rating {i+1}", key=f"bowlrat_{i}")
                     else:
-                        st.error("❌ Metrics don't meet recommended thresholds for this role.")
+                        player["Batting Avg"] = st.number_input(f"Bat Avg {i+1}", key=f"arb_{i}")
+                        player["Bowling Avg"] = st.number_input(f"Bowl Avg {i+1}", key=f"arbow_{i}")
+                        player["All-Round Rating"] = st.number_input(f"AR Rating {i+1}", key=f"arr_{i}")
+                    
+                    manual_players.append((player, pitch, threshold))
 
-            # ---------------- REPLACEMENTS ----------------
-            not_ideal_players = df[df["Pitch Adaptiveness"] == "❌ Not Ideal"]
+            if st.button("⚙️ Calculate All & Add Players"):
+                for player_data, ptype, threshold in manual_players:
+                    role = player_data["Role"]
+                    name = player_data["Player Name"]
+                    valid = False
 
-            if not not_ideal_players.empty:
-                st.warning("❌ Some players are not ideal. Suggest replacements with proper metrics.")
-                replacements = {}
-
-                for idx, row in not_ideal_players.iterrows():
-                    old_name = row["Player Name"]
-                    st.markdown(f"🔁 Replace `{old_name}`")
-
-                    new_name = st.text_input(f"New Player Name for {old_name}", key=f"replace_{idx}")
-                    new_role = st.selectbox(f"Role for {new_name}", list(role_priority.keys()), key=f"role_{idx}")
-                    new_format = st.selectbox(f"Format for {new_name}", ["ODI", "T20"], key=f"format_{idx}")
-
-                    # Metric inputs for the new player
-                    if new_role in ["opener", "anchor", "floater", "finisher"]:
-                        bat_avg = st.number_input(f"Batting Avg for {new_name}", min_value=0.0, key=f"batavg_{idx}")
-                        sr = st.number_input(f"Strike Rate for {new_name}", min_value=0.0, key=f"sr_{idx}")
-                        valid = bat_avg > 35 and sr > 130
-                    elif new_role in ["spinner", "seamer", "fast", "death"]:
-                        eco = st.number_input(f"Economy for {new_name}", min_value=0.0, key=f"eco_{idx}")
-                        wkts = st.number_input(f"Wkts/Match for {new_name}", min_value=0.0, key=f"wkts_{idx}")
-                        valid = eco < 7.5 and wkts > 1.5
+                    if role in ["opener", "anchor", "floater", "finisher"]:
+                        valid = (player_data["Batting Avg"] >= threshold["bat_avg"] and
+                                 player_data["Batting SR"] >= threshold["bat_sr"] and
+                                 player_data["Batting Rating"] >= threshold["bat_rating"])
+                    elif role in ["spinner", "seamer", "fast", "death"]:
+                        valid = (player_data["Bowling Avg"] <= threshold["bowl_avg"] and
+                                 player_data["Bowling Econ"] <= threshold["bowl_econ"] and
+                                 player_data["Bowling Rating"] >= 6.0)
                     else:
-                        bat_avg = st.number_input(f"Batting Avg for {new_name}", min_value=0.0, key=f"batavg_{idx}")
-                        wkts = st.number_input(f"Wickets/Match for {new_name}", min_value=0.0, key=f"wkts_{idx}")
-                        valid = bat_avg > 25 and wkts > 1.0
+                        valid = player_data["All-Round Rating"] >= 6.0
 
-                    if new_name and new_role and valid:
-                        replacements[idx] = {
-                            "Player Name": new_name,
-                            "Role": new_role,
-                            "Format": new_format,
-                            "Pitch Adaptiveness": classify_player({"Role": new_role})
-                        }
+                    player_data["Pitch Adaptiveness"] = classify_player(pd.Series({"Role": role}), ptype, match_time)
 
-                for idx, new_data in replacements.items():
-                    df.loc[idx] = new_data
+                    if valid:
+                        df = pd.concat([df, pd.DataFrame([player_data])], ignore_index=True)
+                        st.success(f"✅ `{name}` added successfully.")
+                    else:
+                        st.error(f"❌ `{name}` did not meet venue-specific metrics.")
 
-            # ---------------- FINAL OUTPUT ----------------
             st.markdown("✅ Final Pitch Adaptive XI")
             st.dataframe(df)
 
             final_csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇ Download Final Pitch Adaptive XI CSV",
-                data=final_csv,
-                file_name="final_pitch_adaptive_xi.csv",
-                mime="text/csv"
-            )
+            st.download_button("⬇ Download Final Pitch Adaptive XI CSV", data=final_csv, file_name="final_pitch_adaptive_xi.csv", mime="text/csv")
         else:
             st.error("❌ Required columns missing: ['Player Name', 'Role', 'Format']")
     else:
@@ -769,10 +756,4 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
-    st.markdown("""
-        <hr style="margin-top: 50px;"/>
-        <div style='text-align: center; color: gray; font-size: 14px;'>
-            © 2025 <b>TrueXI</b>. All rights reserved.
-        </div>
-    """, unsafe_allow_html=True)
+    st.markdown("""<hr style="margin-top: 50px;"/><div style='text-align: center; color: gray; font-size: 14px;'>© 2025 <b>TrueXI</b>. All rights reserved.</div>""", unsafe_allow_html=True)
