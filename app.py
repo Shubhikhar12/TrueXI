@@ -159,14 +159,21 @@ if selected_feature == "Main App Flow":
                 "bias_score", "Is_Biased"
             ]])
 
-            fig = px.scatter(df, x="Fame_score", y="Performance_score", color="Is_Biased",
-                             hover_data=["Player Name", "Primary Role"],
-                             title="Fame vs Performance Bias Map")
+            fig = px.scatter(
+                df, x="Fame_score", y="Performance_score", color="Is_Biased",
+                hover_data=["Player Name", "Primary Role"],
+                title="Fame vs Performance Bias Map"
+            )
+            
             fig.update_layout(
                 xaxis_title="Fame Score",
                 yaxis_title="Performance Score",
-                legend_title="Bias Status"
+                legend_title="Bias Status",
+                plot_bgcolor="#0b132b",    # Matches app background
+                paper_bgcolor="#0b132b",   # Matches app background
+                font=dict(color="white")   # Ensures text is visible
             )
+
             st.plotly_chart(fig, use_container_width=True)
 
             # 🔄 BEEHIVE / BEESWARM SECTION
@@ -179,6 +186,7 @@ if selected_feature == "Main App Flow":
             df["Primary Role_num"] = df["Primary Role"].map(role_mapping)
             df["Jittered_x"] = df["Primary Role_num"] + np.random.normal(0, 0.15, size=len(df))
 
+            
             beehive_fig = px.scatter(
                 df, x="Jittered_x", y="Performance_score",
                 color="Primary Role", hover_data=["Player Name", "Fame_score", "Is_Biased"],
@@ -191,8 +199,12 @@ if selected_feature == "Main App Flow":
                     title="Primary Role"
                 ),
                 yaxis_title="Performance Score",
+                plot_bgcolor="#0b132b",     # Matches app background
+                paper_bgcolor="#0b132b",    # Matches app background
+                font=dict(color="white"),   # White text for visibility
                 showlegend=True
             )
+
             st.plotly_chart(beehive_fig, use_container_width=True)
 
 
@@ -384,6 +396,15 @@ elif selected_feature == "Actual Performance Indicator":
                 df_sorted, x="Player Name", y="API", color="Remarks", text_auto=True,
                 title="API Score by Player"
             )
+            bar_fig.update_layout(
+                plot_bgcolor="#0b132b",
+                paper_bgcolor="#0b132b",
+                font=dict(color="white"),
+                xaxis_title="Player Name",
+                yaxis_title="API",
+                legend_title="Remarks"
+            )
+
             st.plotly_chart(bar_fig, use_container_width=True)
 
             # 🐝 Beehive Plot (Format-wise API Spread)
@@ -398,6 +419,14 @@ elif selected_feature == "Actual Performance Indicator":
                 title="Beehive Plot of API Across Formats"
             )
             bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+            bee_plot.update_layout(
+                plot_bgcolor="#0b132b",
+                paper_bgcolor="#0b132b",
+                font=dict(color="white"),
+                xaxis_title="Format",
+                yaxis_title="API",
+                legend_title="Remarks"
+            )
             st.plotly_chart(bee_plot, use_container_width=True)
 
             # 🔍 Conclusion
@@ -516,9 +545,18 @@ elif selected_feature == "Role Balance Auditor":
             # 📊 Charts
             st.subheader("📈 Role Distribution Overview")
 
+            # Create the pie chart
             pie_chart = px.pie(
-                role_counts, names="Role", values="Count",
+                role_counts,
+                names="Role",
+                values="Count",
                 title="Role Distribution in Current XI"
+            )
+            pie_chart.update_layout(
+                paper_bgcolor="#0b132b",     # Light blue background outside chart
+                plot_bgcolor="#0b132b",        # White background inside chart
+                title_font_color="white",    # Title in black
+                font=dict(color="white")     # General font color
             )
             st.plotly_chart(pie_chart, use_container_width=True)
 
@@ -526,10 +564,17 @@ elif selected_feature == "Role Balance Auditor":
                 role_counts, x="Role", y="Count", color="Balance Status", text_auto=True,
                 title="Role Count with Balance Status"
             )
+            bar_chart.update_layout(
+                paper_bgcolor="#0b132b",   # Outer background
+                plot_bgcolor="#0b132b",    # Plot background
+                font_color="white"           # Text color for contrast
+            )
+
             st.plotly_chart(bar_chart, use_container_width=True)
 
             # 🐝 Beehive (Strip) Plot
             st.subheader("🐝 Beehive Plot (Role vs Batting Position by Format)")
+
             beehive = px.strip(
                 df,
                 x="Role",
@@ -539,7 +584,21 @@ elif selected_feature == "Role Balance Auditor":
                 stripmode="overlay",
                 title="Beehive Plot of Player Roles and Batting Positions"
             )
-            beehive.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+            beehive.update_traces(
+                jitter=0.35,
+                marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey'))
+            )
+            beehive.update_layout(
+                paper_bgcolor='#0b132b',
+                plot_bgcolor='#0b132b',
+                title_font=dict(color='white'),
+                xaxis_title_font=dict(color='white'),
+                yaxis_title_font=dict(color='white'),
+                legend_title_font=dict(color='white'),
+                legend_font=dict(color='white')
+            )
+
+
             st.plotly_chart(beehive, use_container_width=True)
 
         else:
@@ -562,6 +621,7 @@ elif selected_feature == "Role Balance Auditor":
     unsafe_allow_html=True
 )
 
+# ------------------------- Pitch Adaptive XI Selector ----------------------
 elif selected_feature == "Pitch Adaptive XI Selector":
     st.subheader("🏟️ Pitch Adaptive XI Selector")
 
@@ -680,13 +740,27 @@ elif selected_feature == "Pitch Adaptive XI Selector":
 
             import plotly.express as px
             st.subheader("🐝 Beehive View of Player Adaptiveness")
-            fig = px.strip(
-                df, x="Pitch Adaptiveness", y="Role", color="Pitch Adaptiveness",
-                hover_name="Player Name", stripmode="overlay",
-                title="Beehive Plot: Player Roles vs Pitch Suitability", height=500,
+            
+            beehive = px.strip(
+                df,
+                x="Role",
+                y="Pitch Adaptiveness",
+                color="Format",
+                hover_data=["Player Name"],
+                stripmode="overlay",
+                title="Beehive Plot of Player Roles and Adaptiveness"
             )
-            fig.update_traces(jitter=0.6, marker_size=12)
-            st.plotly_chart(fig, use_container_width=True)
+            beehive.update_layout(
+                paper_bgcolor='#0b132b',  # Paper background
+                plot_bgcolor='#0b132b',   # Plot area background
+                font=dict(color="white"),  # Font color for contrast
+                title_font=dict(size=18, color="white"),
+                xaxis=dict(title="Role", color="white", tickfont=dict(color="white")),
+                yaxis=dict(title="Adaptiveness", color="white", tickfont=dict(color="white"))
+            )
+
+
+            st.plotly_chart(beehive, use_container_width=True)
 
             # ------------------- NEW: MANUAL MULTI-ENTRY -------------------
             st.subheader("➕ Add Multiple Players Manually")
