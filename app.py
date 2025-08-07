@@ -57,7 +57,7 @@ st.markdown("""
 st.sidebar.title("📊 Unbiased XI Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
-    "Pressure Heatmap XI",
+    "Actual Performance Indicator",
     "Role Balance Auditor",
     "Pitch Adaptive XI Selector"
 ])
@@ -304,151 +304,134 @@ if selected_feature == "Main App Flow":
     unsafe_allow_html=True
 )
 
-# ------------------ PRESSURE HEATMAP XI ------------------
-elif selected_feature == "Pressure Heatmap XI":
-    st.subheader("🔥 Pressure Heatmap XI")
+# ------------------ ACTUAL PERFORMANCE INDICATOR ------------------
+elif selected_feature == "Actual Performance Indicator":
+    st.subheader("📈 Actual Performance Indicator (API) - With Format-Based Scoring")
 
-    uploaded_file = st.file_uploader("📂 Upload Combined CSV for All Roles", type="csv", key="pressure_upload")
+    api_file = st.file_uploader("📂 Upload CSV with Player Stats", type="csv", key="api_upload")
 
-    expected_roles = ["opener", "anchor", "floater", "finisher", "wicketkeeper", "all-rounder", "fast bowler", "spinner"]
+    if api_file:
+        df = pd.read_csv(api_file)
 
-    role_score_logic = {
-        "opener": lambda row: (row['Powerplay SR'] * 0.4) + (row['Bat Avg vs Top Teams'] * 0.3) + ((100 - row['Dot Ball % in PP']) * 0.3),
-        "anchor": lambda row: (row['Powerplay SR'] * 0.4) + (row['Bat Avg vs Top Teams'] * 0.3) + ((100 - row['Dot Ball % in PP']) * 0.3),
-        "floater": lambda row: (row['Middle Over SR'] * 0.4) + (row['Boundary %'] * 0.3) + (row['Avg after Early Wkts'] * 0.3),
-        "finisher": lambda row: (row['Death Over SR'] * 0.4) + (row['Death Bat Avg'] * 0.3) + ((100 - row['Dot Ball % Death']) * 0.3),
-        "wicketkeeper": lambda row: (row['Powerplay SR'] * 0.3) + ((100 - row['Dot Ball % in PP']) * 0.2) + (row['Bat Avg vs Top Teams'] * 0.2) + (row['Dismissals/Innings'] * 0.2) - (row['Error Rate'] * 0.1),
-        "all-rounder": lambda row: ((row['Bat Pressure Score'] * 0.5) + (row['Bowl Pressure Score'] * 0.5)),
-        "fast bowler": lambda row: ((100 - row['Death Econ']) * 0.3) + (row['Dot% Death'] * 0.3) + (row['Wkts in Death'] * 0.4),
-        "spinner": lambda row: ((100 - row['Mid Overs Econ']) * 0.4) + (row['Wkts Middle'] * 0.4) + (row['Dot% Middle'] * 0.2)
-    }
-
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-
-        # Convert relevant columns to numeric
-        columns_to_convert = [
-            'Powerplay SR', 'Bat Avg vs Top Teams', 'Dot Ball % in PP', 'Middle Over SR',
-            'Boundary %', 'Avg after Early Wkts', 'Death Over SR', 'Death Bat Avg', 'Dot Ball % Death',
-            'Dismissals/Innings', 'Error Rate', 'Bat Pressure Score', 'Bowl Pressure Score',
-            'Death Econ', 'Dot% Death', 'Wkts in Death', 'Mid Overs Econ', 'Wkts Middle', 'Dot% Middle'
+        required_columns = [
+            "Player Name", "Format", "Runs", "Strike_Rate", "Fours", "Sixes", "Wickets",
+            "Dot_Balls", "Maidens", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings", "Balls_Faced"
         ]
-        for col in columns_to_convert:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        if 'Role' not in df.columns:
-            st.error("❌ 'Role' column is missing in uploaded CSV.")
-        else:
-            df['Pressure Score'] = 0.0  # Initialize Pressure Score
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns.")
 
-            # Calculate Pressure Scores
-            for idx, row in df.iterrows():
-                role = str(row['Role']).lower()
-                if role in role_score_logic:
-                    try:
-                        df.at[idx, 'Pressure Score'] = role_score_logic[role](row)
-                    except Exception as e:
-                        st.warning(f"⚠️ Error calculating pressure score for {row['Player Name']} ({role}): {e}")
+            # -------------------- API Calculation Logic --------------------
+            def calculate_scores(row):
+                fmt = row["Format"]
+
+                # Batting
+                if fmt == "T20":
+                    batting = row["Runs"] + (row["Strike_Rate"] / 2.5) + (row["Fours"] * 1) + (row["Sixes"] * 1.5)
+                    bowling = (row["Wickets"] * 25) + (row["Dot_Balls"] * 1.2) + (row["Maidens"] * 12) - (row["Runs_Conceded"] / 2)
+                elif fmt == "ODI":
+                    batting = row["Runs"] + (row["Strike_Rate"] / 3) + (row["Fours"] * 1) + (row["Sixes"] * 1.2)
+                    bowling = (row["Wickets"] * 25) + (row["Dot_Balls"] * 1) + (row["Maidens"] * 12) - (row["Runs_Conceded"] / 2)
+                elif fmt == "Test":
+                    batting = row["Runs"] + (row["Balls_Faced"] / 2)
+                    bowling = (row["Wickets"] * 25) + (row["Maidens"] * 15) - (row["Runs_Conceded"] / 2)
                 else:
-                    st.warning(f"⚠️ Unknown role '{role}' for player {row['Player Name']}")
+                    batting = bowling = 0
 
-            df['Performs Under Pressure'] = df['Pressure Score'].apply(lambda x: '✅' if x >= 75 else '❌')
+                # Fielding (same for all formats)
+                fielding = (row["Catches"] * 10) + (row["Run_Outs"] * 12) + (row["Stumpings"] * 15)
 
-            st.markdown("### 📋 All Players Pressure Scores")
-            st.dataframe(df)
+                # API formula
+                api = (batting * 0.4) + (bowling * 0.4) + (fielding * 0.2)
 
-            # ---------------- Manual Player Section ----------------
-            st.markdown("### ➕ Add Manual Players (Replaces ❌ Players)")
-            manual_players = []
-            with st.expander("Add Manual Players"):
-                num_manual = st.number_input("Number of Manual Players to Add", min_value=0, max_value=10, step=1, key="manual_add_count")
-                
-                for i in range(num_manual):
-                    st.markdown(f"---\n#### Manual Player {i+1}")
-                    name = st.text_input("Player Name", key=f"manual_name_{i}")
-                    role = st.selectbox("Role", expected_roles, key=f"manual_role_{i}")
+                return pd.Series([batting, bowling, fielding, api])
 
-                    inputs = {}
-                    if role in ["opener", "anchor"]:
-                        inputs['Powerplay SR'] = st.number_input("Powerplay SR", key=f"ppsr_{i}")
-                        inputs['Bat Avg vs Top Teams'] = st.number_input("Bat Avg vs Top Teams", key=f"batavg_{i}")
-                        inputs['Dot Ball % in PP'] = st.number_input("Dot Ball % in PP", key=f"dotpp_{i}")
-                    elif role == "floater":
-                        inputs['Middle Over SR'] = st.number_input("Middle Over SR", key=f"mosr_{i}")
-                        inputs['Boundary %'] = st.number_input("Boundary %", key=f"bnd_{i}")
-                        inputs['Avg after Early Wkts'] = st.number_input("Avg after Early Wkts", key=f"earlywkts_{i}")
-                    elif role == "finisher":
-                        inputs['Death Over SR'] = st.number_input("Death Over SR", key=f"dosr_{i}")
-                        inputs['Death Bat Avg'] = st.number_input("Death Bat Avg", key=f"davg_{i}")
-                        inputs['Dot Ball % Death'] = st.number_input("Dot Ball % Death", key=f"dotdeath_{i}")
-                    elif role == "wicketkeeper":
-                        inputs['Powerplay SR'] = st.number_input("Powerplay SR", key=f"wksr_{i}")
-                        inputs['Dot Ball % in PP'] = st.number_input("Dot Ball % in PP", key=f"wkdot_{i}")
-                        inputs['Bat Avg vs Top Teams'] = st.number_input("Bat Avg vs Top Teams", key=f"wkavg_{i}")
-                        inputs['Dismissals/Innings'] = st.number_input("Dismissals/Innings", key=f"wkdis_{i}")
-                        inputs['Error Rate'] = st.number_input("Error Rate", key=f"wkerr_{i}")
-                    elif role == "all-rounder":
-                        inputs['Bat Pressure Score'] = st.number_input("Bat Pressure Score", key=f"bps_{i}")
-                        inputs['Bowl Pressure Score'] = st.number_input("Bowl Pressure Score", key=f"bws_{i}")
-                    elif role == "fast bowler":
-                        inputs['Death Econ'] = st.number_input("Death Econ", key=f"econ_{i}")
-                        inputs['Dot% Death'] = st.number_input("Dot% Death", key=f"dotdeathp_{i}")
-                        inputs['Wkts in Death'] = st.number_input("Wkts in Death", key=f"wktsdeath_{i}")
-                    elif role == "spinner":
-                        inputs['Mid Overs Econ'] = st.number_input("Mid Overs Econ", key=f"spinecon_{i}")
-                        inputs['Wkts Middle'] = st.number_input("Wkts Middle", key=f"spinwkts_{i}")
-                        inputs['Dot% Middle'] = st.number_input("Dot% Middle", key=f"spindot_{i}")
+            df[["Batting Score", "Bowling Score", "Fielding Score", "API"]] = df.apply(calculate_scores, axis=1)
 
-                    if st.button(f"Calculate Score for {name}", key=f"calc_button_{i}"):
-                        try:
-                            temp_row = pd.Series(inputs)
-                            pressure_score = role_score_logic[role](temp_row)
-                            performs = '✅' if pressure_score >= 75 else '❌'
-                            st.success(f"Pressure Score: {pressure_score:.2f} | Performs Under Pressure: {performs}")
+            # -------------------- Remarks Logic --------------------
+            def get_remark(api_score, max_api):
+                if api_score == max_api:
+                    return "🏆 Top Performer"
+                elif api_score >= 0.8 * max_api:
+                    return "🔥 Excellent"
+                elif api_score >= 0.6 * max_api:
+                    return "✅ Good"
+                elif api_score >= 0.4 * max_api:
+                    return "⚠️ Average"
+                else:
+                    return "🔻 Needs Improvement"
 
-                            manual_players.append({
-                                "Player Name": name,
-                                "Role": role,
-                                "Pressure Score": round(pressure_score, 2),
-                                "Performs Under Pressure": performs
-                            })
-                        except Exception as e:
-                            st.error(f"Calculation Error: {e}")
+            df_sorted = df.sort_values(by="API", ascending=False).reset_index(drop=True)
+            max_api = df_sorted["API"].max()
+            df_sorted["Remarks"] = df_sorted["API"].apply(lambda x: get_remark(x, max_api))
 
-            # Replace ❌ Players with Manual Players
-            underperforming_indices = df[df['Performs Under Pressure'] == '❌'].index.tolist()
-            for idx, manual_player in zip(underperforming_indices, manual_players):
-                df.at[idx, 'Player Name'] = manual_player['Player Name']
-                df.at[idx, 'Role'] = manual_player['Role']
-                df.at[idx, 'Pressure Score'] = manual_player['Pressure Score']
-                df.at[idx, 'Performs Under Pressure'] = manual_player['Performs Under Pressure']
+            # 📋 API Report
+            st.subheader("📋 API Performance Report")
+            st.dataframe(df_sorted)
 
-            # Sort & Select Top 11
-            final_xi = df.sort_values(by="Pressure Score", ascending=False).head(11)
-            st.markdown("### ✅ Final Pressure XI Candidates")
-            st.dataframe(final_xi)
+            # ⬇ CSV Download
+            csv_data = df_sorted.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇ Download API Report CSV",
+                data=csv_data,
+                file_name="api_performance_report.csv",
+                mime="text/csv"
+            )
 
-            # BeeHive (Swarm) Plot
-            st.markdown("### 🐝 Beehive Plot - Pressure Score Distribution")
-            fig = px.strip(df, x='Role', y='Pressure Score', color='Performs Under Pressure', stripmode='overlay', title="Pressure Score Beehive Plot", template="plotly_dark")
-            st.plotly_chart(fig)
+            # 📊 Bar Chart
+            import plotly.express as px
+            bar_fig = px.bar(
+                df_sorted, x="Player Name", y="API", color="Remarks", text_auto=True,
+                title="API Score by Player"
+            )
+            st.plotly_chart(bar_fig, use_container_width=True)
 
-            st.download_button("⬇ Download Final XI CSV", final_xi.to_csv(index=False), file_name="pressure_xi.csv")
+            # 🐝 Beehive Plot (Format-wise API Spread)
+            st.subheader("🐝 Beehive Plot (API vs Format)")
+            bee_plot = px.strip(
+                df_sorted,
+                x="Format",
+                y="API",
+                hover_data=["Player Name", "Remarks"],
+                color="Remarks",
+                stripmode="overlay",
+                title="Beehive Plot of API Across Formats"
+            )
+            bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+            st.plotly_chart(bee_plot, use_container_width=True)
 
+            # 🔍 Conclusion
+            st.subheader("🔍 Conclusion & Insights")
+            top_player = df_sorted.iloc[0]
+            least_player = df_sorted.iloc[-1]
+            st.success(f"🏅 **Top Performer:** {top_player['Player Name']} with an API of `{top_player['API']:.2f}` in **{top_player['Format']}** format.")
+            st.error(f"📉 **Least Performer:** {least_player['Player Name']} with an API of `{least_player['API']:.2f}`.")
+
+            st.markdown("### 📝 Remarks Summary:")
+            summary_counts = df_sorted["Remarks"].value_counts().to_dict()
+            for remark, count in summary_counts.items():
+                st.markdown(f"- **{remark}**: {count} player(s)")
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with API calculation.")
+
+    # --- Signature Footer ---
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
     st.markdown(
-    """
-    <hr style="margin-top: 50px;"/>
-    <div style='text-align: center; color: gray; font-size: 14px;'>
-        © 2025 <b>TrueXI</b>. All rights reserved.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
+        """
+        <hr style="margin-top: 50px;"/>
+        <div style='text-align: center; color: gray; font-size: 14px;'>
+            © 2025 <b>TrueXI</b>. All rights reserved.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ------------------ ROLE BALANCE AUDITOR ------------------
 elif selected_feature == "Role Balance Auditor":
