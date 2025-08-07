@@ -62,6 +62,28 @@ selected_feature = st.sidebar.radio("Select Feature", [
     "Pitch Adaptive XI Selector"
 ])
 
+st.sidebar.markdown("### 🧪 Download Sample Test Files")
+
+sample_files = {
+    "Main App Flow": "merged_players_data.csv",
+    "Actual Performance Indicator": "api_input_t20_11_players.csv",
+    "Role Balance Auditor": "ODI_Player_Data_role.csv",
+    "Pitch Adaptive XI Selector": "t20_11_player_ratings Pitch.csv"
+}
+
+for label, filename in sample_files.items():
+    try:
+        with open(filename, "rb") as f:
+            st.sidebar.download_button(
+                label=f"📥 {label} Sample",
+                data=f,
+                file_name=filename,
+                mime="text/csv",
+                key=filename  # To avoid Streamlit key collisions
+            )
+    except FileNotFoundError:
+        st.sidebar.warning(f"⚠️ {filename} not found.")
+
 # ------------------ HEADER ------------------
 st.image("app logo.png", width=150)
 st.markdown("<h1>🏏 TrueXI Selector App</h1>", unsafe_allow_html=True)
