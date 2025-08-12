@@ -118,9 +118,16 @@ if selected_feature == "Main App Flow":
             df.dropna(inplace=True)
             df["Primary Role"] = df["Primary Role"].astype(str).str.strip().str.lower()
 
-            # Convert social media reach values (M/K/B → number)
+                 # 🔹 NEW — If Twitter/Instagram columns exist, sum them into Social Media Reach
+            if "Twitter Followers" in df.columns and "Instagram Followers" in df.columns:
+                df["Twitter Followers"] = df["Twitter Followers"].apply(convert_social_media_value)
+                df["Instagram Followers"] = df["Instagram Followers"].apply(convert_social_media_value)
+                df["Social Media Reach"] = df["Twitter Followers"] + df["Instagram Followers"]
+
+            # 🔹 Still handle case where Social Media Reach is already present
             if "Social Media Reach" in df.columns:
                 df["Social Media Reach"] = df["Social Media Reach"].apply(convert_social_media_value)
+
 
             required_columns = [
                 "Player Name", "Primary Role", "Format", "Batting Avg", "Batting SR",
