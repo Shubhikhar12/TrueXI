@@ -12,7 +12,6 @@ from streamlit_lottie import st_lottie
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 
-
 # ------------------ PAGE CONFIG ------------------
 st.set_page_config(page_title="TrueXI Selector", layout="wide")
 
@@ -64,16 +63,33 @@ selected_feature = st.sidebar.radio("Select Feature", [
 
 # ------------------ HEADER ------------------
 st.image("app logo.png", width=150)
-st.markdown("<h1>🏏 Truelytics</h1>", unsafe_allow_html=True)
+st.markdown("<h1>🏏 True XI</h1>", unsafe_allow_html=True)
 st.markdown("<h4>Make Data-Driven Cricket Selections Without Bias</h4>", unsafe_allow_html=True)
 if lottie_cricket:
     st_lottie(lottie_cricket, height=150, key="cricket_header")
 
-    # ------------------ UTILITY FUNCTIONS ------------------
+# ------------------ UTILITY FUNCTIONS ------------------
 def safe_scale(column):
     if len(np.unique(column)) > 1:
         return MinMaxScaler().fit_transform(column.values.reshape(-1, 1))
     return np.full_like(column.values, 0.5).reshape(-1, 1)
+
+# ✅ Convert "90M", "500K" etc. to numbers
+def convert_social_media_value(val):
+    if isinstance(val, str):
+        val = val.strip().upper()
+        if val.endswith("M"):
+            return float(val[:-1]) * 1_000_000
+        elif val.endswith("K"):
+            return float(val[:-1]) * 1_000
+        elif val.endswith("B"):
+            return float(val[:-1]) * 1_000_000_000
+        else:
+            try:
+                return float(val)
+            except:
+                return np.nan
+    return val
 
 def compute_performance(row):
     role = row["Primary Role"].strip().lower()
@@ -92,7 +108,6 @@ def calculate_leadership_score(df):
     df["Leadership_Score"] = 0.6 * df["Performance_score"] + 0.4 * df["Fame_score"]
     return df
 
-
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
 
@@ -102,6 +117,11 @@ if selected_feature == "Main App Flow":
             df = pd.read_csv(uploaded_file)
             df.dropna(inplace=True)
             df["Primary Role"] = df["Primary Role"].astype(str).str.strip().str.lower()
+
+            # Convert social media reach values (M/K/B → number)
+            if "Social Media Reach" in df.columns:
+                df["Social Media Reach"] = df["Social Media Reach"].apply(convert_social_media_value)
+
             required_columns = [
                 "Player Name", "Primary Role", "Format", "Batting Avg", "Batting SR",
                 "Wickets", "Bowling Economy", "Google Trends Score", "Social Media Reach"
@@ -113,7 +133,6 @@ if selected_feature == "Main App Flow":
                 st.session_state.df = df
                 st.session_state.step = 1
                 st.success("✅ File uploaded successfully.")
-
     if st.session_state.df is not None:
         df = st.session_state.df
 
@@ -462,127 +481,115 @@ elif selected_feature == "Actual Performance Indicator":
         unsafe_allow_html=True
     )
 
-# ------------------ ROLE BALANCE AUDITOR ------------------
-elif selected_feature == "Role Balance Auditor":
-    st.subheader("⚖ Role Balance Auditor (With Role Distribution & Alerts)")
+# ------------------ BOWLING CHANGE EFFICIENCY TRACKER ------------------
+elif selected_feature == "Bowling Change Efficiency Tracker":
+    st.subheader("🎯 Bowling Change Efficiency Tracker (With Impact Analysis & Alerts)")
 
-    role_file = st.file_uploader("📂 Upload CSV with Player Roles", type="csv", key="role_balance_upload")
+    bowling_file = st.file_uploader("📂 Upload CSV with Bowling Change Data", type="csv", key="bowling_change_upload")
 
-    if role_file:
-        df = pd.read_csv(role_file)
+    if bowling_file:
+        df = pd.read_csv(bowling_file)
 
-        required_columns = ["Player Name", "Role", "Batting Position", "Format"]
+        required_columns = ["Over Number", "Bowler Name", "New Bowler?", "Wickets in Next Over",
+                            "Runs Conceded in Next Over", "Match Format"]
 
         if all(col in df.columns for col in required_columns):
             st.success("✅ File loaded with all required columns.")
 
-            # Recommended min and max for roles
-            role_limits = {
-                "Opener": (2, 3),
-                "Anchor": (1, 2),
-                "Floater": (1, 2),
-                "Finisher": (1, 2),
-                "Wk": (1, 1),
-                "All-rounder": (1, 3),
-                "Spinner": (1, 2),
-                "Fast Bowler": (2, 3),
-                "Death Specialist": (1, 2)
-            }
+            # Define success criteria (basic)
+            def is_successful_change(wickets, runs, fmt):
+                if wickets > 0:
+                    return True
+                # Economy thresholds by format
+                thresholds = {"T20": 6, "ODI": 4.5, "Test": 3}
+                return runs <= thresholds.get(fmt, 6)
 
-            role_counts = df["Role"].value_counts().reset_index()
-            role_counts.columns = ["Role", "Count"]
-
-            # Role balance checker with emoji
-            def get_balance_status(role, count):
-                if role not in role_limits:
-                    return "⚠ Unknown Role"
-                min_r, max_r = role_limits[role]
-                if count < min_r:
-                    return "🟠 Too Few"
-                elif count > max_r:
-                    return "🔴 Too Many"
-                else:
-                    return "🟢 Balanced"
-
-            role_counts["Balance Status"] = role_counts.apply(
-                lambda row: get_balance_status(row["Role"], row["Count"]), axis=1
+            df["Successful Change"] = df.apply(
+                lambda row: is_successful_change(row["Wickets in Next Over"], row["Runs Conceded in Next Over"], row["Match Format"]),
+                axis=1
             )
 
-            # Merge with player data
-            audit_df = df.merge(role_counts, on="Role", how="left")
+            # Filter only bowling changes
+            changes_df = df[df["New Bowler?"] == True]
 
-            # Reorder columns
-            audit_df = audit_df[[
-                "Player Name", "Role", "Batting Position", "Format", "Count", "Balance Status"
+            # Calculate efficiency
+            total_changes = len(changes_df)
+            successful_changes = changes_df["Successful Change"].sum()
+            bce_percentage = (successful_changes / total_changes * 100) if total_changes > 0 else 0
+
+            # 📋 Display Table
+            audit_df = changes_df[[
+                "Over Number", "Bowler Name", "Wickets in Next Over",
+                "Runs Conceded in Next Over", "Successful Change", "Match Format"
             ]]
 
-            # 📋 Display Data
-            st.subheader("📋 Role Balance Report")
+            st.subheader("📋 Bowling Change Impact Report")
             st.dataframe(audit_df)
 
-            # 🔍 Suggestions (optional enhancement)
-            imbalanced_roles = role_counts[role_counts["Balance Status"] != "🟢 Balanced"]
-            if not imbalanced_roles.empty:
-                st.warning("🔍 Suggestions to improve balance:")
-                for _, row in imbalanced_roles.iterrows():
-                    role = row["Role"]
-                    count = row["Count"]
-                    min_r, max_r = role_limits.get(role, (0, 0))
-                    if count < min_r:
-                        st.markdown(f"- ➕ Consider *adding* more players for role: {role} (Current: {count}, Minimum Required: {min_r})")
-                    elif count > max_r:
-                        st.markdown(f"- ➖ Consider *removing* some players from role: {role} (Current: {count}, Maximum Allowed: {max_r})")
+            # 🔍 Suggestions
+            if bce_percentage < 50:
+                st.warning(f"⚠ Bowling Change Efficiency is low ({bce_percentage:.1f}%). Consider reviewing change strategies.")
+            else:
+                st.success(f"✅ Bowling Change Efficiency is strong ({bce_percentage:.1f}%).")
 
             # ⬇ Download
             csv_data = audit_df.to_csv(index=False).encode("utf-8")
             st.download_button(
-                "⬇ Download Role Balance CSV",
+                "⬇ Download Bowling Change Report",
                 data=csv_data,
-                file_name="role_balance_audit.csv",
+                file_name="bowling_change_efficiency.csv",
                 mime="text/csv"
             )
 
-            # 📊 Charts
-            st.subheader("📈 Role Distribution Overview")
+            # 📊 Pie chart for success/failure
+            success_counts = audit_df["Successful Change"].value_counts().reset_index()
+            success_counts.columns = ["Successful Change", "Count"]
+            success_counts["Successful Change"] = success_counts["Successful Change"].map({True: "Successful", False: "Unsuccessful"})
 
-            # Create the pie chart
             pie_chart = px.pie(
-                role_counts,
-                names="Role",
+                success_counts,
+                names="Successful Change",
                 values="Count",
-                title="Role Distribution in Current XI"
+                title="Bowling Change Success Rate"
             )
             pie_chart.update_layout(
-                paper_bgcolor="#0b132b",     # Light blue background outside chart
-                plot_bgcolor="#0b132b",        # White background inside chart
-                title_font_color="white",    # Title in black
-                font=dict(color="white")     # General font color
+                paper_bgcolor="#0b132b",
+                plot_bgcolor="#0b132b",
+                title_font_color="white",
+                font=dict(color="white")
             )
             st.plotly_chart(pie_chart, use_container_width=True)
 
+            # 📊 Bar chart: Average wickets & runs after change by format
+            avg_stats = changes_df.groupby("Match Format").agg({
+                "Wickets in Next Over": "mean",
+                "Runs Conceded in Next Over": "mean"
+            }).reset_index()
+
             bar_chart = px.bar(
-                role_counts, x="Role", y="Count", color="Balance Status", text_auto=True,
-                title="Role Count with Balance Status"
+                avg_stats,
+                x="Match Format",
+                y=["Wickets in Next Over", "Runs Conceded in Next Over"],
+                barmode="group",
+                title="Average Wickets & Runs After Bowling Change"
             )
             bar_chart.update_layout(
-                paper_bgcolor="#0b132b",   # Outer background
-                plot_bgcolor="#0b132b",    # Plot background
-                font_color="white"           # Text color for contrast
+                paper_bgcolor="#0b132b",
+                plot_bgcolor="#0b132b",
+                font_color="white"
             )
-
             st.plotly_chart(bar_chart, use_container_width=True)
 
-            # 🐝 Beehive (Strip) Plot
-            st.subheader("🐝 Beehive Plot (Role vs Batting Position by Format)")
-
+            # 🐝 Beehive plot: Over number vs Wickets
+            st.subheader("🐝 Beehive Plot (Over Number vs Wickets After Change)")
             beehive = px.strip(
-                df,
-                x="Role",
-                y="Batting Position",
-                color="Format",
-                hover_data=["Player Name"],
+                changes_df,
+                x="Over Number",
+                y="Wickets in Next Over",
+                color="Match Format",
+                hover_data=["Bowler Name"],
                 stripmode="overlay",
-                title="Beehive Plot of Player Roles and Batting Positions"
+                title="Impact of Bowling Change by Over"
             )
             beehive.update_traces(
                 jitter=0.35,
@@ -597,15 +604,85 @@ elif selected_feature == "Role Balance Auditor":
                 legend_title_font=dict(color='white'),
                 legend_font=dict(color='white')
             )
-
-
             st.plotly_chart(beehive, use_container_width=True)
+
+            # 🔥 NEW VISUAL 1: Impact Heatmap
+            st.subheader("🔥 Impact Heatmap (Over vs Runs Conceded)")
+            heatmap_data = changes_df.pivot_table(
+                index="Over Number",
+                columns="Match Format",
+                values="Runs Conceded in Next Over",
+                aggfunc="mean"
+            )
+            heatmap = px.imshow(
+                heatmap_data,
+                color_continuous_scale="RdYlGn_r",
+                title="Average Runs Conceded After Bowling Change"
+            )
+            heatmap.update_layout(
+                paper_bgcolor="#0b132b",
+                plot_bgcolor="#0b132b",
+                font_color="white"
+            )
+            st.plotly_chart(heatmap, use_container_width=True)
+
+            # 📈 NEW VISUAL 2: Cumulative Efficiency Trend
+            st.subheader("📈 Cumulative Efficiency Over Overs")
+            changes_df["Cumulative Success %"] = (changes_df["Successful Change"].cumsum() / (changes_df.index + 1)) * 100
+            line_chart = px.line(
+                changes_df,
+                x="Over Number",
+                y="Cumulative Success %",
+                title="Cumulative Bowling Change Efficiency Trend",
+                markers=True
+            )
+            line_chart.update_layout(
+                paper_bgcolor="#0b132b",
+                plot_bgcolor="#0b132b",
+                font_color="white"
+            )
+            st.plotly_chart(line_chart, use_container_width=True)
+
+            # 🕸 NEW VISUAL 3: Bowler Impact Network Graph
+            st.subheader("🕸 Bowler Success Network")
+            import networkx as nx
+            G = nx.Graph()
+            for _, row in changes_df.iterrows():
+                if row["Successful Change"]:
+                    G.add_edge("Bowling Change", row["Bowler Name"])
+            pos = nx.spring_layout(G)
+            edge_x, edge_y = [], []
+            for edge in G.edges():
+                x0, y0 = pos[edge[0]]
+                x1, y1 = pos[edge[1]]
+                edge_x += [x0, x1, None]
+                edge_y += [y0, y1, None]
+            import plotly.graph_objects as go
+            edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1, color="#888"), hoverinfo='none', mode='lines')
+            node_x, node_y = [], []
+            for node in G.nodes():
+                x, y = pos[node]
+                node_x.append(x)
+                node_y.append(y)
+            node_trace = go.Scatter(
+                x=node_x, y=node_y, mode='markers+text', text=list(G.nodes()),
+                textposition="bottom center",
+                marker=dict(size=12, color="lightblue"), hoverinfo='text'
+            )
+            fig_net = go.Figure(data=[edge_trace, node_trace])
+            fig_net.update_layout(
+                paper_bgcolor="#0b132b",
+                plot_bgcolor="#0b132b",
+                title="Bowler Success Connection Network",
+                font_color="white"
+            )
+            st.plotly_chart(fig_net, use_container_width=True)
 
         else:
             missing = [col for col in required_columns if col not in df.columns]
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
     else:
-        st.info("📁 Please upload a CSV file with roles to continue.")
+        st.info("📁 Please upload a CSV file with bowling change data to continue.")
 
     # --- Signature Footer ---
     st.markdown("---")
