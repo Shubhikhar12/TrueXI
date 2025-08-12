@@ -131,7 +131,7 @@ if selected_feature == "Main App Flow":
 
             required_columns = [
                 "Player Name", "Primary Role", "Format", "Batting Avg", "Batting SR",
-                "Wickets", "Bowling Economy", "Google Trends Score", "Social Media Reach"
+                "Wickets", "Bowling Economy", "Google Trends Score", "Instagram Followers", "Twitter Followers"
             ]
             missing = [col for col in required_columns if col not in df.columns]
             if missing:
