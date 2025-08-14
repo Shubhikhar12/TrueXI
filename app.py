@@ -57,7 +57,7 @@ st.sidebar.title("📊 Unbiased XI Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
     "Actual Performance Indicator",
-    "Role Balance Auditor",
+    "Opponent-Specific Impact Score",
     "Pitch Adaptive XI Selector"
 ])
 
@@ -488,222 +488,308 @@ elif selected_feature == "Actual Performance Indicator":
         unsafe_allow_html=True
     )
 
-# ------------------ BOWLING CHANGE EFFICIENCY TRACKER ------------------
-elif selected_feature == "Bowling Change Efficiency Tracker":
-    st.subheader("🎯 Bowling Change Efficiency Tracker (With Impact Analysis & Alerts)")
+# ------------------ OPPONENT-SPECIFIC IMPACT SCORE ------------------
+elif selected_feature == "Opponent-Specific Impact Score":
+    st.subheader("🎯 Opponent-Specific Impact Score (OSIS) - Matchup Analysis")
 
-    bowling_file = st.file_uploader("📂 Upload CSV with Bowling Change Data", type="csv", key="bowling_change_upload")
+    osis_file = st.file_uploader("📂 Upload CSV with Player Match Stats", type="csv", key="osis_upload")
 
-    if bowling_file:
-        df = pd.read_csv(bowling_file)
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
 
-        required_columns = ["Over Number", "Bowler Name", "New Bowler?", "Wickets in Next Over",
-                            "Runs Conceded in Next Over", "Match Format"]
+    if osis_file:
+        df = pd.read_csv(osis_file)
+
+        required_columns = [
+            "Player", "Primary Role", "Opponent", "Runs", "Balls_Faced",
+            "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Catches", "Run_Outs", "Stumpings"
+        ]
 
         if all(col in df.columns for col in required_columns):
             st.success("✅ File loaded with all required columns.")
 
-            # Define success criteria (basic)
-            def is_successful_change(wickets, runs, fmt):
-                if wickets > 0:
-                    return True
-                # Economy thresholds by format
-                thresholds = {"T20": 6, "ODI": 4.5, "Test": 3}
-                return runs <= thresholds.get(fmt, 6)
+            # -------------------- Impact Calculation Functions --------------------
+            def batting_impact(runs, balls):
+                if pd.isna(balls) or balls == 0:
+                    return 0.0
+                strike_rate = (runs / balls) * 100.0
+                return (runs * 0.6) + (strike_rate * 0.4)
 
-            df["Successful Change"] = df.apply(
-                lambda row: is_successful_change(row["Wickets in Next Over"], row["Runs Conceded in Next Over"], row["Match Format"]),
+            def bowling_impact(wickets, overs, runs_conceded):
+                if pd.isna(overs) or overs == 0:
+                    return 0.0
+                economy = runs_conceded / overs
+                # Reward wickets heavily; reward economy below 6; penalize above 6
+                return (wickets * 20 * 0.7) + ((6 - economy) * 10 * 0.3)
+
+            def fielding_impact(catches, run_outs, stumpings):
+                return (catches * 10) + (run_outs * 12) + (stumpings * 15)
+
+            def calculate_role_impact(row):
+                role = str(row["Primary Role"]).strip().lower()
+                runs = row["Runs"]; balls = row["Balls_Faced"]
+                wkts = row["Wickets"]; overs = row["Overs_Bowled"]; rc = row["Runs_Conceded"]
+                catches = row["Catches"]; ro = row["Run_Outs"]; stp = row["Stumpings"]
+
+                if role == "batter":
+                    return batting_impact(runs, balls)
+                elif role == "bowler":
+                    return bowling_impact(wkts, overs, rc)
+                elif role == "all-rounder":
+                    bat = batting_impact(runs, balls)
+                    bowl = bowling_impact(wkts, overs, rc)
+                    return (bat + bowl) / 2.0
+                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
+                    bat = batting_impact(runs, balls)
+                    wk_field = fielding_impact(catches, ro, stp)
+                    return bat + (wk_field * 0.5)  # partial weight for keeping
+                else:
+                    # Fallback: batting only
+                    return batting_impact(runs, balls)
+
+            # Safety fill for numeric columns
+            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
+            df[num_cols] = df[num_cols].fillna(0)
+
+            # Per-match impact
+            df["Impact"] = df.apply(calculate_role_impact, axis=1)
+
+            # -------------------- OSIS Calculation (All Opponents) --------------------
+            # Overall average impact per player across all opponents
+            overall = (
+                df.groupby(["Player", "Primary Role"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Overall_Avg_Impact"})
+            )
+
+            # Average impact per player vs each opponent
+            vs_opp = (
+                df.groupby(["Player", "Primary Role", "Opponent"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Opponent_Avg_Impact"})
+            )
+
+            # Merge and compute OSIS
+            osis_all = vs_opp.merge(overall, on=["Player", "Primary Role"], how="left")
+            osis_all["OSIS"] = osis_all.apply(
+                lambda r: (r["Opponent_Avg_Impact"] / r["Overall_Avg_Impact"] * 100.0) if r["Overall_Avg_Impact"] not in [0, None] else 0.0,
                 axis=1
             )
 
-            # Filter only bowling changes
-            changes_df = df[df["New Bowler?"] == True]
+            # -------------------- Utility: Remarks per opponent (relative to that opponent's max) --------------------
+            def add_remarks_per_opponent(osis_df):
+                out = []
+                for opp, sub in osis_df.groupby("Opponent"):
+                    sub = sub.copy()
+                    max_osis = sub["OSIS"].max() if len(sub) else 0
+                    def remark(x):
+                        if x == max_osis:
+                            return "🏆 Top Matchup"
+                        elif x >= 0.8 * max_osis:
+                            return "🔥 Strong"
+                        elif x >= 0.6 * max_osis:
+                            return "✅ Solid"
+                        elif x >= 0.4 * max_osis:
+                            return "⚠️ Average"
+                        else:
+                            return "🔻 Weak"
+                    sub["Remarks"] = sub["OSIS"].apply(remark)
+                    out.append(sub)
+                return pd.concat(out, ignore_index=True) if out else osis_df
 
-            # Calculate efficiency
-            total_changes = len(changes_df)
-            successful_changes = changes_df["Successful Change"].sum()
-            bce_percentage = (successful_changes / total_changes * 100) if total_changes > 0 else 0
+            osis_all = add_remarks_per_opponent(osis_all)
 
-            # 📋 Display Table
-            audit_df = changes_df[[
-                "Over Number", "Bowler Name", "Wickets in Next Over",
-                "Runs Conceded in Next Over", "Successful Change", "Match Format"
-            ]]
+            # -------------------- View Switcher --------------------
+            opponent_list = sorted(osis_all["Opponent"].unique().tolist())
+            view_choice = st.selectbox(
+                "🔎 View Mode",
+                ["All Opponents (Summary)"] + opponent_list,
+                help="Choose 'All Opponents' for an overview or pick an opponent for a deep-dive."
+            )
 
-            st.subheader("📋 Bowling Change Impact Report")
-            st.dataframe(audit_df)
+            # -------------------- ALL OPPONENTS (SUMMARY) --------------------
+            if view_choice == "All Opponents (Summary)":
+                st.subheader("🌐 Summary Across All Opponents")
 
-            # 🔍 Suggestions
-            if bce_percentage < 50:
-                st.warning(f"⚠ Bowling Change Efficiency is low ({bce_percentage:.1f}%). Consider reviewing change strategies.")
+                # A) Heatmap: Players × Opponents OSIS
+                pivot_osis = osis_all.pivot_table(index="Player", columns="Opponent", values="OSIS", aggfunc="mean").fillna(0).round(2)
+                st.markdown("**OSIS Heatmap (Players × Opponents)**")
+                import plotly.express as px
+                fig_heat = px.imshow(
+                    pivot_osis,
+                    labels=dict(x="Opponent", y="Player", color="OSIS"),
+                    aspect="auto",
+                    title="OSIS Heatmap Across Opponents"
+                )
+                _dark_layout(fig_heat)
+                st.plotly_chart(fig_heat, use_container_width=True)
+
+                # B) Bar: Average OSIS per Opponent (how well our squad matches up vs each opponent)
+                avg_vs_opp = osis_all.groupby("Opponent", as_index=False)["OSIS"].mean().sort_values("OSIS", ascending=False)
+                fig_avg = px.bar(
+                    avg_vs_opp, x="Opponent", y="OSIS", text_auto=True,
+                    title="Average OSIS by Opponent (Team-wide)"
+                )
+                _dark_layout(fig_avg, xlab="Opponent", ylab="Average OSIS")
+                st.plotly_chart(fig_avg, use_container_width=True)
+
+                # C) Per-Player Best/Worst Opponents
+                best = osis_all.loc[osis_all.groupby("Player")["OSIS"].idxmax()].rename(columns={"Opponent": "Best_Opponent", "OSIS": "Best_OSIS"})
+                worst = osis_all.loc[osis_all.groupby("Player")["OSIS"].idxmin()].rename(columns={"Opponent": "Worst_Opponent", "OSIS": "Worst_OSIS"})
+                bw = best[["Player", "Primary Role", "Best_Opponent", "Best_OSIS"]].merge(
+                    worst[["Player", "Worst_Opponent", "Worst_OSIS"]],
+                    on="Player", how="left"
+                ).sort_values(["Primary Role", "Player"])
+                st.markdown("**Best vs Worst Opponent per Player**")
+                st.dataframe(bw.reset_index(drop=True))
+
+                # D) Per-Opponent Leaders (Top 5)
+                st.markdown("**Top 5 Matchups per Opponent**")
+                for opp in opponent_list:
+                    sub = osis_all[osis_all["Opponent"] == opp].sort_values("OSIS", ascending=False).head(5)
+                    st.markdown(f"**🏟️ {opp} — Top 5**")
+                    st.dataframe(sub[["Player", "Primary Role", "Opponent_Avg_Impact", "Overall_Avg_Impact", "OSIS", "Remarks"]].reset_index(drop=True))
+
+                # Downloads
+                st.download_button(
+                    "⬇ Download Full OSIS (All Opponents)",
+                    data=osis_all.to_csv(index=False).encode("utf-8"),
+                    file_name="osis_all_opponents.csv",
+                    mime="text/csv"
+                )
+                st.download_button(
+                    "⬇ Download OSIS Heatmap (table form)",
+                    data=pivot_osis.to_csv().encode("utf-8"),
+                    file_name="osis_heatmap_table.csv",
+                    mime="text/csv"
+                )
+
+                # Insights
+                st.subheader("🔍 Summary Insights")
+                top_opp = avg_vs_opp.iloc[0]
+                low_opp = avg_vs_opp.iloc[-1]
+                st.info(
+                    f"✅ **Best team-wide matchup:** **{top_opp['Opponent']}** (avg OSIS `{top_opp['OSIS']:.2f}`)\n\n"
+                    f"⚠️ **Most challenging opponent:** **{low_opp['Opponent']}** (avg OSIS `{low_opp['OSIS']:.2f}`)."
+                )
+                st.markdown("Use the deep-dive view below to explore who drives these results for a specific opponent.")
+
+            # -------------------- SINGLE OPPONENT (DEEP-DIVE) --------------------
             else:
-                st.success(f"✅ Bowling Change Efficiency is strong ({bce_percentage:.1f}%).")
+                selected_opponent = view_choice
+                st.subheader(f"🧭 Deep-Dive: OSIS vs **{selected_opponent}**")
 
-            # ⬇ Download
-            csv_data = audit_df.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇ Download Bowling Change Report",
-                data=csv_data,
-                file_name="bowling_change_efficiency.csv",
-                mime="text/csv"
-            )
+                osis_df = (
+                    osis_all[osis_all["Opponent"] == selected_opponent]
+                    .copy()
+                    .sort_values("OSIS", ascending=False)
+                    .reset_index(drop=True)
+                )
 
-            # 📊 Pie chart for success/failure
-            success_counts = audit_df["Successful Change"].value_counts().reset_index()
-            success_counts.columns = ["Successful Change", "Count"]
-            success_counts["Successful Change"] = success_counts["Successful Change"].map({True: "Successful", False: "Unsuccessful"})
+                # Recompute remarks with the current opponent's scale
+                max_osis = osis_df["OSIS"].max() if len(osis_df) else 0
+                def get_remark(osis_score, max_):
+                    if osis_score == max_:
+                        return "🏆 Top Matchup"
+                    elif osis_score >= 0.8 * max_:
+                        return "🔥 Strong"
+                    elif osis_score >= 0.6 * max_:
+                        return "✅ Solid"
+                    elif osis_score >= 0.4 * max_:
+                        return "⚠️ Average"
+                    else:
+                        return "🔻 Weak"
+                osis_df["Remarks"] = osis_df["OSIS"].apply(lambda x: get_remark(x, max_osis))
 
-            pie_chart = px.pie(
-                success_counts,
-                names="Successful Change",
-                values="Count",
-                title="Bowling Change Success Rate"
-            )
-            pie_chart.update_layout(
-                paper_bgcolor="#0b132b",
-                plot_bgcolor="#0b132b",
-                title_font_color="white",
-                font=dict(color="white")
-            )
-            st.plotly_chart(pie_chart, use_container_width=True)
+                # 📋 OSIS Report
+                st.markdown(f"### 📋 OSIS Report vs {selected_opponent}")
+                st.dataframe(osis_df[["Player", "Primary Role", "Overall_Avg_Impact", "Opponent_Avg_Impact", "OSIS", "Remarks"]])
 
-            # 📊 Bar chart: Average wickets & runs after change by format
-            avg_stats = changes_df.groupby("Match Format").agg({
-                "Wickets in Next Over": "mean",
-                "Runs Conceded in Next Over": "mean"
-            }).reset_index()
+                # ⬇ CSV Download
+                csv_data = osis_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    "⬇ Download OSIS Report CSV",
+                    data=csv_data,
+                    file_name=f"osis_report_vs_{selected_opponent}.csv",
+                    mime="text/csv"
+                )
 
-            bar_chart = px.bar(
-                avg_stats,
-                x="Match Format",
-                y=["Wickets in Next Over", "Runs Conceded in Next Over"],
-                barmode="group",
-                title="Average Wickets & Runs After Bowling Change"
-            )
-            bar_chart.update_layout(
-                paper_bgcolor="#0b132b",
-                plot_bgcolor="#0b132b",
-                font_color="white"
-            )
-            st.plotly_chart(bar_chart, use_container_width=True)
+                # 📊 Bar Chart
+                import plotly.express as px
+                bar_fig = px.bar(
+                    osis_df, x="Player", y="OSIS", color="Remarks", text_auto=True,
+                    title=f"OSIS vs {selected_opponent}"
+                )
+                _dark_layout(bar_fig, xlab="Player", ylab="OSIS")
+                st.plotly_chart(bar_fig, use_container_width=True)
 
-            # 🐝 Beehive plot: Over number vs Wickets
-            st.subheader("🐝 Beehive Plot (Over Number vs Wickets After Change)")
-            beehive = px.strip(
-                changes_df,
-                x="Over Number",
-                y="Wickets in Next Over",
-                color="Match Format",
-                hover_data=["Bowler Name"],
-                stripmode="overlay",
-                title="Impact of Bowling Change by Over"
-            )
-            beehive.update_traces(
-                jitter=0.35,
-                marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey'))
-            )
-            beehive.update_layout(
-                paper_bgcolor='#0b132b',
-                plot_bgcolor='#0b132b',
-                title_font=dict(color='white'),
-                xaxis_title_font=dict(color='white'),
-                yaxis_title_font=dict(color='white'),
-                legend_title_font=dict(color='white'),
-                legend_font=dict(color='white')
-            )
-            st.plotly_chart(beehive, use_container_width=True)
+                # 🐝 Beehive Plot (Impact spread vs opponent)
+                st.subheader("🐝 Beehive Plot (Impact vs Opponent)")
+                bee_plot = px.strip(
+                    osis_df,
+                    x="Primary Role",
+                    y="OSIS",
+                    hover_data=["Player", "Remarks"],
+                    color="Remarks",
+                    stripmode="overlay",
+                    title=f"Beehive Plot of OSIS vs {selected_opponent}"
+                )
+                bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+                _dark_layout(bee_plot, xlab="Role", ylab="OSIS")
+                st.plotly_chart(bee_plot, use_container_width=True)
 
-            # 🔥 NEW VISUAL 1: Impact Heatmap
-            st.subheader("🔥 Impact Heatmap (Over vs Runs Conceded)")
-            heatmap_data = changes_df.pivot_table(
-                index="Over Number",
-                columns="Match Format",
-                values="Runs Conceded in Next Over",
-                aggfunc="mean"
-            )
-            heatmap = px.imshow(
-                heatmap_data,
-                color_continuous_scale="RdYlGn_r",
-                title="Average Runs Conceded After Bowling Change"
-            )
-            heatmap.update_layout(
-                paper_bgcolor="#0b132b",
-                plot_bgcolor="#0b132b",
-                font_color="white"
-            )
-            st.plotly_chart(heatmap, use_container_width=True)
+                # 🔍 Conclusion
+                st.subheader("🔍 Conclusion & Insights")
+                if len(osis_df) > 0:
+                    top_player = osis_df.iloc[0]
+                    least_player = osis_df.iloc[-1]
+                    st.success(
+                        f"🏅 **Top Matchup Performer:** {top_player['Player']} ({top_player['Primary Role']}) "
+                        f"with an OSIS of `{top_player['OSIS']:.2f}` against **{selected_opponent}**."
+                    )
+                    st.error(
+                        f"📉 **Weakest Matchup Performer:** {least_player['Player']} ({least_player['Primary Role']}) "
+                        f"with an OSIS of `{least_player['OSIS']:.2f}`."
+                    )
 
-            # 📈 NEW VISUAL 2: Cumulative Efficiency Trend
-            st.subheader("📈 Cumulative Efficiency Over Overs")
-            changes_df["Cumulative Success %"] = (changes_df["Successful Change"].cumsum() / (changes_df.index + 1)) * 100
-            line_chart = px.line(
-                changes_df,
-                x="Over Number",
-                y="Cumulative Success %",
-                title="Cumulative Bowling Change Efficiency Trend",
-                markers=True
-            )
-            line_chart.update_layout(
-                paper_bgcolor="#0b132b",
-                plot_bgcolor="#0b132b",
-                font_color="white"
-            )
-            st.plotly_chart(line_chart, use_container_width=True)
+                    st.markdown("### 📝 Remarks Summary")
+                    summary_counts = osis_df["Remarks"].value_counts().to_dict()
+                    for remark, count in summary_counts.items():
+                        st.markdown(f"- **{remark}**: {count} player(s)")
+                else:
+                    st.info("No records found for this opponent.")
 
-            # 🕸 NEW VISUAL 3: Bowler Impact Network Graph
-            st.subheader("🕸 Bowler Success Network")
-            import networkx as nx
-            G = nx.Graph()
-            for _, row in changes_df.iterrows():
-                if row["Successful Change"]:
-                    G.add_edge("Bowling Change", row["Bowler Name"])
-            pos = nx.spring_layout(G)
-            edge_x, edge_y = [], []
-            for edge in G.edges():
-                x0, y0 = pos[edge[0]]
-                x1, y1 = pos[edge[1]]
-                edge_x += [x0, x1, None]
-                edge_y += [y0, y1, None]
-            import plotly.graph_objects as go
-            edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=1, color="#888"), hoverinfo='none', mode='lines')
-            node_x, node_y = [], []
-            for node in G.nodes():
-                x, y = pos[node]
-                node_x.append(x)
-                node_y.append(y)
-            node_trace = go.Scatter(
-                x=node_x, y=node_y, mode='markers+text', text=list(G.nodes()),
-                textposition="bottom center",
-                marker=dict(size=12, color="lightblue"), hoverinfo='text'
+            # --- Signature Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
             )
-            fig_net = go.Figure(data=[edge_trace, node_trace])
-            fig_net.update_layout(
-                paper_bgcolor="#0b132b",
-                plot_bgcolor="#0b132b",
-                title="Bowler Success Connection Network",
-                font_color="white"
-            )
-            st.plotly_chart(fig_net, use_container_width=True)
 
         else:
-            missing = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing))
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
     else:
-        st.info("📁 Please upload a CSV file with bowling change data to continue.")
-
-    # --- Signature Footer ---
-    st.markdown("---")
-    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
-    st.markdown(
-    """
-    <hr style="margin-top: 50px;"/>
-    <div style='text-align: center; color: gray; font-size: 14px;'>
-        © 2025 <b>TrueXI</b>. All rights reserved.
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
 
 # ------------------------- Pitch Adaptive XI Selector ----------------------
 elif selected_feature == "Pitch Adaptive XI Selector":
