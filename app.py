@@ -58,6 +58,7 @@ selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
     "Actual Performance Indicator",
     "Opponent-Specific Impact Score",
+    "Format Adaptability Index",
     "Pitch Adaptive XI Selector"
 ])
 
@@ -790,6 +791,214 @@ elif selected_feature == "Opponent-Specific Impact Score":
 
     else:
         st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
+
+# ------------------ FORMAT ADAPTABILITY INDEX ------------------
+elif selected_feature == "Format Adaptability Index":
+    st.subheader("🔄 Format Adaptability Index (FAI) - Multi-Format Consistency")
+
+    fai_file = st.file_uploader("📂 Upload CSV with Player Format Stats", type="csv", key="fai_upload")
+
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
+
+    if fai_file:
+        df = pd.read_csv(fai_file)
+
+        required_columns = [
+            "Player", "Role", "Format", 
+            "Player_Avg", "Format_Avg"
+        ]
+
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns.")
+
+            # -------------------- FAI Calculation --------------------
+            df["Normalised_Performance"] = df["Player_Avg"] / df["Format_Avg"]
+
+            summary = (
+                df.groupby(["Player", "Role"], as_index=False)
+                .agg(
+                    Mean_Norm=("Normalised_Performance", "mean"),
+                    Std_Norm=("Normalised_Performance", "std")
+                )
+            )
+            summary["Std_Norm"] = summary["Std_Norm"].fillna(0)
+            summary["CoV"] = summary.apply(
+                lambda r: (r["Std_Norm"] / r["Mean_Norm"]) if r["Mean_Norm"] != 0 else 0,
+                axis=1
+            )
+            summary["FAI"] = 100 - (summary["CoV"] * 100)
+
+            df = df.merge(summary[["Player", "FAI"]], on="Player", how="left")
+
+            def remark(fai):
+                if fai >= 90:
+                    return "🏆 Highly Adaptable"
+                elif fai >= 75:
+                    return "🔥 Strongly Consistent"
+                elif fai >= 60:
+                    return "✅ Solid"
+                elif fai >= 40:
+                    return "⚠️ Format Dependent"
+                else:
+                    return "🔻 Struggles Across Formats"
+            summary["Remarks"] = summary["FAI"].apply(remark)
+
+            # -------------------- View Switcher --------------------
+            format_list = sorted(df["Format"].unique().tolist())
+            view_choice = st.selectbox(
+                "🔎 View Mode",
+                ["All Formats (Summary)"] + format_list,
+                help="Choose 'All Formats' for overview or pick a specific format for deep-dive."
+            )
+
+            # -------------------- ALL FORMATS (SUMMARY) --------------------
+            if view_choice == "All Formats (Summary)":
+                st.subheader("🌐 Summary Across All Formats")
+
+                # Heatmap: Players × Formats (Normalised Performance)
+                pivot_fai = df.pivot_table(index="Player", columns="Format", values="Normalised_Performance", aggfunc="mean").fillna(0).round(2)
+                st.markdown("**FAI Heatmap (Players × Formats)**")
+                import plotly.express as px
+                fig_heat = px.imshow(
+                    pivot_fai,
+                    labels=dict(x="Format", y="Player", color="Norm Perf"),
+                    aspect="auto",
+                    title="Normalised Performance Heatmap Across Formats"
+                )
+                _dark_layout(fig_heat)
+                st.plotly_chart(fig_heat, use_container_width=True)
+
+                # Bar chart: FAI
+                fig_fai = px.bar(
+                    summary.sort_values("FAI", ascending=False),
+                    x="Player", y="FAI", color="Remarks", text_auto=".2f",
+                    title="Format Adaptability Index (FAI) - All Players"
+                )
+                _dark_layout(fig_fai, xlab="Player", ylab="FAI")
+                st.plotly_chart(fig_fai, use_container_width=True)
+
+                # Best/Worst Formats per Player
+                best_fmt = df.loc[df.groupby("Player")["Normalised_Performance"].idxmax()].rename(columns={"Format": "Best_Format", "Normalised_Performance": "Best_NormPerf"})
+                worst_fmt = df.loc[df.groupby("Player")["Normalised_Performance"].idxmin()].rename(columns={"Format": "Worst_Format", "Normalised_Performance": "Worst_NormPerf"})
+                bw = best_fmt[["Player", "Role", "Best_Format", "Best_NormPerf"]].merge(
+                    worst_fmt[["Player", "Worst_Format", "Worst_NormPerf"]],
+                    on="Player", how="left"
+                ).sort_values(["Role", "Player"])
+                st.markdown("**Best vs Worst Format per Player**")
+                st.dataframe(bw.reset_index(drop=True))
+
+                # Downloads
+                st.download_button(
+                    "⬇ Download Full FAI Summary",
+                    data=summary.to_csv(index=False).encode("utf-8"),
+                    file_name="fai_summary.csv",
+                    mime="text/csv"
+                )
+                st.download_button(
+                    "⬇ Download FAI Heatmap (table form)",
+                    data=pivot_fai.to_csv().encode("utf-8"),
+                    file_name="fai_heatmap_table.csv",
+                    mime="text/csv"
+                )
+
+                # Insights
+                top_player = summary.iloc[0]
+                low_player = summary.iloc[-1]
+                st.info(
+                    f"🏅 **Most Adaptable Player:** {top_player['Player']} ({top_player['FAI']:.2f})\n\n"
+                    f"📉 **Least Adaptable Player:** {low_player['Player']} ({low_player['FAI']:.2f})"
+                )
+
+            # -------------------- SINGLE FORMAT (DEEP-DIVE) --------------------
+            else:
+                selected_format = view_choice
+                st.subheader(f"🧭 Deep-Dive: {selected_format}")
+
+                fmt_df = df[df["Format"] == selected_format].copy()
+                fmt_df = fmt_df.sort_values("Normalised_Performance", ascending=False).reset_index(drop=True)
+
+                max_perf = fmt_df["Normalised_Performance"].max() if len(fmt_df) else 0
+                def get_remark(val, max_):
+                    if val == max_:
+                        return "🏆 Best in Format"
+                    elif val >= 0.8 * max_:
+                        return "🔥 Strong"
+                    elif val >= 0.6 * max_:
+                        return "✅ Solid"
+                    elif val >= 0.4 * max_:
+                        return "⚠️ Below Avg"
+                    else:
+                        return "🔻 Struggles"
+                fmt_df["Remarks"] = fmt_df["Normalised_Performance"].apply(lambda x: get_remark(x, max_perf))
+
+                # Table
+                st.dataframe(fmt_df[["Player", "Role", "Player_Avg", "Format_Avg", "Normalised_Performance", "FAI", "Remarks"]])
+
+                # Bar Chart
+                import plotly.express as px
+                bar_fig = px.bar(
+                    fmt_df, x="Player", y="Normalised_Performance", color="Remarks", text_auto=".2f",
+                    title=f"Normalised Performance in {selected_format}"
+                )
+                _dark_layout(bar_fig, xlab="Player", ylab="Normalised Performance")
+                st.plotly_chart(bar_fig, use_container_width=True)
+
+                # Downloads
+                st.download_button(
+                    f"⬇ Download {selected_format} Data",
+                    data=fmt_df.to_csv(index=False).encode("utf-8"),
+                    file_name=f"fai_{selected_format}.csv",
+                    mime="text/csv"
+                )
+
+                # Conclusion
+                if len(fmt_df) > 0:
+                    top_player = fmt_df.iloc[0]
+                    low_player = fmt_df.iloc[-1]
+                    st.success(
+                        f"🏅 **Top Performer:** {top_player['Player']} ({top_player['Role']}) "
+                        f"with Norm Perf `{top_player['Normalised_Performance']:.2f}` in {selected_format}."
+                    )
+                    st.error(
+                        f"📉 **Lowest Performer:** {low_player['Player']} ({low_player['Role']}) "
+                        f"with Norm Perf `{low_player['Normalised_Performance']:.2f}`."
+                    )
+                    remark_counts = fmt_df["Remarks"].value_counts().to_dict()
+                    st.markdown("### 📝 Remarks Summary")
+                    for r, c in remark_counts.items():
+                        st.markdown(f"- **{r}**: {c} player(s)")
+
+            # Footer
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with FAI calculation.")
+
 
 # ------------------------- Pitch Adaptive XI Selector ----------------------
 elif selected_feature == "Pitch Adaptive XI Selector":
