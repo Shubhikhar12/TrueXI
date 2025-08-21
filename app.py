@@ -57,9 +57,7 @@ st.sidebar.title("📊 Unbiased Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
     "Opponent-Specific Impact Scores",
-    "Format Specialization Dilemma",
-    "Unstable Performance Issue",
-    "Transition Mismanagement"
+    "Dismissal Mode Vulnerability"            
     ])
 
 # ------------------ HEADER ------------------
@@ -660,11 +658,11 @@ elif selected_feature == "Opponent-Specific Impact Scores":
     else:
         st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
 
-# ------------------ FORMAT SPECIALIZATION DILEMMA ------------------
-elif selected_feature == "Format Specialization Dilemma":
-    st.subheader("⚖️ Format Specialization Dilemma (FSD) - Cross-Format Consistency")
+# ------------------ DISMISSAL MODE VULNERABILITY (DMV) ------------------
+elif selected_feature == "Dismissal Mode Vulnerability":
+    st.subheader("⚡ Dismissal Mode Vulnerability (DMV) - Weakness Analysis")
 
-    fsd_file = st.file_uploader("📂 Upload CSV with Player Match Stats (by Format)", type="csv", key="fsd_upload")
+    dmv_file = st.file_uploader("📂 Upload CSV with Player Dismissal Stats", type="csv", key="dmv_upload")
 
     # ---------- Helpers ----------
     def _dark_layout(fig, title=None, xlab=None, ylab=None):
@@ -679,273 +677,174 @@ elif selected_feature == "Format Specialization Dilemma":
         )
         return fig
 
-    if fsd_file:
-        df = pd.read_csv(fsd_file)
+    if dmv_file:
+        df = pd.read_csv(dmv_file)
 
-        required_columns = [
-            "Player", "Primary Role", "Format", "Runs", "Balls_Faced",
-            "Wickets", "Overs_Bowled", "Runs_Conceded",
-            "Catches", "Run_Outs", "Stumpings"
-        ]
-
+        required_columns = ["Player", "Primary Role", "Format", "Opponent", "Dismissal_Mode"]
         if all(col in df.columns for col in required_columns):
             st.success("✅ File loaded with all required columns.")
 
-            # -------------------- Impact Calculation Functions --------------------
-            def batting_impact(runs, balls, fmt):
-                if pd.isna(balls) or balls == 0:
-                    return 0.0
-                strike_rate = (runs / balls) * 100.0
-                if fmt == "Test":
-                    return (runs * 0.7) + (strike_rate * 0.3)
-                elif fmt == "ODI":
-                    return (runs * 0.6) + (strike_rate * 0.4)
-                else:  # T20
-                    return (runs * 0.4) + (strike_rate * 0.6)
-
-            def bowling_impact(wickets, overs, runs_conceded, fmt):
-                if pd.isna(overs) or overs == 0:
-                    return 0.0
-                economy = runs_conceded / overs
-                if fmt == "Test":
-                    return (wickets * 20 * 0.6) + ((6 - economy) * 10 * 0.4)
-                elif fmt == "ODI":
-                    return (wickets * 20 * 0.65) + ((6 - economy) * 10 * 0.35)
-                else:  # T20
-                    return (wickets * 20 * 0.5) + ((6 - economy) * 10 * 0.5)
-
-            def fielding_impact(catches, run_outs, stumpings, fmt):
-                base = (catches * 10) + (run_outs * 12) + (stumpings * 15)
-                if fmt == "Test":
-                    return base * 0.5
-                elif fmt == "ODI":
-                    return base * 0.8
-                else:
-                    return base * 1.0
-
-            def calculate_role_impact(row):
-                role = str(row["Primary Role"]).strip().lower()
-                fmt = row["Format"]
-                runs = row["Runs"]; balls = row["Balls_Faced"]
-                wkts = row["Wickets"]; overs = row["Overs_Bowled"]; rc = row["Runs_Conceded"]
-                catches = row["Catches"]; ro = row["Run_Outs"]; stp = row["Stumpings"]
-
-                if role == "batter":
-                    return batting_impact(runs, balls, fmt)
-                elif role == "bowler":
-                    return bowling_impact(wkts, overs, rc, fmt)
-                elif role == "all-rounder":
-                    bat = batting_impact(runs, balls, fmt)
-                    bowl = bowling_impact(wkts, overs, rc, fmt)
-                    # workload share
-                    bat_share = balls / (balls + overs * 6 + 1e-6)
-                    bowl_share = 1 - bat_share
-                    return (bat * bat_share) + (bowl * bowl_share)
-                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
-                    bat = batting_impact(runs, balls, fmt)
-                    wk_field = fielding_impact(catches, ro, stp, fmt)
-                    return bat + (wk_field * 0.5)
-                else:
-                    return batting_impact(runs, balls, fmt)
-
-            # Safety fill for numeric columns
-            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
-            df[num_cols] = df[num_cols].fillna(0)
-
-            # Per-match impact
-            df["Impact"] = df.apply(calculate_role_impact, axis=1)
-
-            # -------------------- FSD Calculation --------------------
-            overall = (
-                df.groupby(["Player", "Primary Role"], as_index=False)["Impact"]
-                .mean()
-                .rename(columns={"Impact": "Overall_Avg_Impact"})
+            # -------------------- DMV Calculation --------------------
+            dismissals_count = (
+                df.groupby(["Player", "Primary Role", "Format", "Dismissal_Mode"])
+                .size()
+                .reset_index(name="Dismissal_Count")
             )
 
-            vs_format = (
-                df.groupby(["Player", "Primary Role", "Format"], as_index=False)["Impact"]
-                .mean()
-                .rename(columns={"Impact": "Format_Avg_Impact"})
+            total_dismissals = (
+                df.groupby(["Player", "Primary Role", "Format"])
+                .size()
+                .reset_index(name="Total_Dismissals")
             )
 
-            fsd_all = vs_format.merge(overall, on=["Player", "Primary Role"], how="left")
+            dmv_all = dismissals_count.merge(
+                total_dismissals, on=["Player", "Primary Role", "Format"], how="left"
+            )
 
-            def compute_fsd(row):
-                if row["Overall_Avg_Impact"] <= 20:  # threshold
-                    return 0.0
-                if row["Overall_Avg_Impact"] in [0, None]:
-                    return 0.0
-                return (row["Format_Avg_Impact"] / row["Overall_Avg_Impact"] * 100.0)
+            dmv_all["DMV"] = (dmv_all["Dismissal_Count"] / dmv_all["Total_Dismissals"]) * 100
 
-            fsd_all["FSD"] = fsd_all.apply(compute_fsd, axis=1)
+            # -------------------- Remarks --------------------
+            def add_dmv_remarks(sub):
+                max_dmv = sub["DMV"].max() if len(sub) else 0
+                def remark(x):
+                    if x == max_dmv:
+                        return "🚨 Major Weakness"
+                    elif x >= 0.8 * max_dmv:
+                        return "⚠️ Vulnerable"
+                    elif x >= 0.5 * max_dmv:
+                        return "😐 Moderate"
+                    else:
+                        return "✅ Low Risk"
+                sub["Remarks"] = sub["DMV"].apply(remark)
+                return sub
 
-            # -------------------- Remarks per Format --------------------
-            def add_remarks_per_format(fsd_df):
-                out = []
-                for fmt, sub in fsd_df.groupby("Format"):
-                    sub = sub.copy()
-                    max_fsd = sub["FSD"].max() if len(sub) else 0
+            dmv_all = dmv_all.groupby(["Player", "Format"], group_keys=False).apply(add_dmv_remarks)
 
-                    def remark(x):
-                        if x >= 120 and x == max_fsd:
-                            return "🏆 Format Specialist"
-                        elif x >= 100:
-                            return "🔥 Strong"
-                        elif x >= 80:
-                            return "✅ Balanced"
-                        elif x >= 60:
-                            return "⚠️ Average"
-                        else:
-                            return "🔻 Weak"
+            # -------------------- Format Filter --------------------
+            format_list = sorted(dmv_all["Format"].unique().tolist())
+            chosen_format = st.selectbox("📌 Select Format", format_list)
 
-                    sub["Remarks"] = sub["FSD"].apply(remark)
-                    out.append(sub)
-                return pd.concat(out, ignore_index=True) if out else fsd_df
-
-            fsd_all = add_remarks_per_format(fsd_all)
+            dmv_all_fmt = dmv_all[dmv_all["Format"] == chosen_format]
 
             # -------------------- View Switcher --------------------
-            format_list = sorted(fsd_all["Format"].unique().tolist())
+            player_list = sorted(dmv_all_fmt["Player"].unique().tolist())
             view_choice = st.selectbox(
                 "🔎 View Mode",
-                ["All Formats (Summary)"] + format_list,
-                help="Choose 'All Formats' for an overview or pick a format for a deep-dive."
+                ["All Players (Summary)"] + player_list,
+                help="Choose 'All Players' for an overview or pick a player for a deep-dive."
             )
 
-            # -------------------- ALL FORMATS (SUMMARY) --------------------
-            if view_choice == "All Formats (Summary)":
-                st.subheader("🌐 Summary Across All Formats")
+            # -------------------- ALL PLAYERS (SUMMARY) --------------------
+            if view_choice == "All Players (Summary)":
+                st.subheader(f"🌐 DMV Summary Across All Players — {chosen_format}")
 
                 # Heatmap
-                pivot_fsd = fsd_all.pivot_table(index="Player", columns="Format", values="FSD", aggfunc="mean").fillna(0).round(2)
-                st.markdown("**FSD Heatmap (Players × Formats)**")
+                pivot_dmv = dmv_all_fmt.pivot_table(
+                    index="Player", columns="Dismissal_Mode", values="DMV", aggfunc="mean"
+                ).fillna(0).round(2)
+
                 import plotly.express as px
                 fig_heat = px.imshow(
-                    pivot_fsd,
-                    labels=dict(x="Format", y="Player", color="FSD"),
+                    pivot_dmv,
+                    labels=dict(x="Dismissal Mode", y="Player", color="DMV %"),
                     aspect="auto",
-                    title="FSD Heatmap Across Formats"
+                    title=f"Dismissal Mode Vulnerability Heatmap ({chosen_format})"
                 )
                 _dark_layout(fig_heat)
                 st.plotly_chart(fig_heat, use_container_width=True)
 
-                # Average FSD per Format
-                avg_vs_fmt = fsd_all.groupby("Format", as_index=False)["FSD"].mean().sort_values("FSD", ascending=False)
-                fig_avg = px.bar(
-                    avg_vs_fmt, x="Format", y="FSD", text_auto=True,
-                    title="Average FSD by Format (Team-wide)"
+                # Average DMV by Mode
+                avg_by_mode = (
+                    dmv_all_fmt.groupby("Dismissal_Mode", as_index=False)["DMV"].mean()
+                    .sort_values("DMV", ascending=False)
                 )
-                _dark_layout(fig_avg, xlab="Format", ylab="Average FSD")
+                fig_avg = px.bar(
+                    avg_by_mode, x="Dismissal_Mode", y="DMV", text_auto=True,
+                    title=f"Average DMV by Dismissal Mode — {chosen_format}"
+                )
+                _dark_layout(fig_avg, xlab="Dismissal Mode", ylab="Avg DMV %")
                 st.plotly_chart(fig_avg, use_container_width=True)
 
-                # Best/Worst Format per Player
-                best = fsd_all.loc[fsd_all.groupby("Player")["FSD"].idxmax()].rename(columns={"Format": "Best_Format", "FSD": "Best_FSD"})
-                worst = fsd_all.loc[fsd_all.groupby("Player")["FSD"].idxmin()].rename(columns={"Format": "Worst_Format", "FSD": "Worst_FSD"})
-                bw = best[["Player", "Primary Role", "Best_Format", "Best_FSD"]].merge(
-                    worst[["Player", "Worst_Format", "Worst_FSD"]],
-                    on="Player", how="left"
-                ).sort_values(["Primary Role", "Player"])
-                st.markdown("**Best vs Worst Format per Player**")
-                st.dataframe(bw.reset_index(drop=True))
-
-                # Top 5 per Format
-                st.markdown("**Top 5 Performers per Format**")
-                for fmt in format_list:
-                    sub = fsd_all[fsd_all["Format"] == fmt].sort_values("FSD", ascending=False).head(5)
-                    st.markdown(f"**🏏 {fmt} — Top 5**")
-                    st.dataframe(sub[["Player", "Primary Role", "Format_Avg_Impact", "Overall_Avg_Impact", "FSD", "Remarks"]].reset_index(drop=True))
-
-                # Downloads
-                st.download_button(
-                    "⬇ Download Full FSD (All Formats)",
-                    data=fsd_all.to_csv(index=False).encode("utf-8"),
-                    file_name="fsd_all_formats.csv",
-                    mime="text/csv"
+                # Most Vulnerable Mode per Player
+                most_vuln = dmv_all_fmt.loc[dmv_all_fmt.groupby("Player")["DMV"].idxmax()].rename(
+                    columns={"Dismissal_Mode": "Most_Vulnerable_Mode", "DMV": "Max_DMV"}
                 )
+                st.markdown("**Most Vulnerable Mode per Player**")
+                st.dataframe(most_vuln[["Player", "Primary Role", "Most_Vulnerable_Mode", "Max_DMV", "Remarks"]])
+
+                # Download
                 st.download_button(
-                    "⬇ Download FSD Heatmap (table form)",
-                    data=pivot_fsd.to_csv().encode("utf-8"),
-                    file_name="fsd_heatmap_table.csv",
+                    f"⬇ Download Full DMV ({chosen_format})",
+                    data=dmv_all_fmt.to_csv(index=False).encode("utf-8"),
+                    file_name=f"dmv_all_players_{chosen_format}.csv",
                     mime="text/csv"
                 )
 
                 # Insights
                 st.subheader("🔍 Summary Insights")
-                top_fmt = avg_vs_fmt.iloc[0]
-                low_fmt = avg_vs_fmt.iloc[-1]
+                top_mode = avg_by_mode.iloc[0]
+                low_mode = avg_by_mode.iloc[-1]
                 st.info(
-                    f"✅ **Best format for team-wide impact:** **{top_fmt['Format']}** (avg FSD `{top_fmt['FSD']:.2f}`)\n\n"
-                    f"⚠️ **Most challenging format:** **{low_fmt['Format']}** (avg FSD `{low_fmt['FSD']:.2f}`)."
+                    f"🚨 **Most common dismissal mode in {chosen_format}:** **{top_mode['Dismissal_Mode']}** "
+                    f"(avg DMV `{top_mode['DMV']:.2f}%`)\n\n"
+                    f"✅ **Least common dismissal mode:** **{low_mode['Dismissal_Mode']}** "
+                    f"(avg DMV `{low_mode['DMV']:.2f}%`)."
                 )
 
-            # -------------------- SINGLE FORMAT (DEEP-DIVE) --------------------
+            # -------------------- SINGLE PLAYER (DEEP-DIVE) --------------------
             else:
-                selected_format = view_choice
-                st.subheader(f"🧭 Deep-Dive: FSD in **{selected_format}**")
+                selected_player = view_choice
+                st.subheader(f"🧭 Deep-Dive: DMV for **{selected_player}** — {chosen_format}")
 
-                fsd_df = (
-                    fsd_all[fsd_all["Format"] == selected_format]
+                dmv_df = (
+                    dmv_all_fmt[dmv_all_fmt["Player"] == selected_player]
                     .copy()
-                    .sort_values("FSD", ascending=False)
+                    .sort_values("DMV", ascending=False)
                     .reset_index(drop=True)
                 )
 
-                # 📋 FSD Report
-                st.markdown(f"### 📋 FSD Report in {selected_format}")
-                st.dataframe(fsd_df[["Player", "Primary Role", "Overall_Avg_Impact", "Format_Avg_Impact", "FSD", "Remarks"]])
+                # 📋 DMV Report
+                st.markdown(f"### 📋 DMV Report for {selected_player} — {chosen_format}")
+                st.dataframe(dmv_df[["Player", "Primary Role", "Dismissal_Mode", "Dismissal_Count", "DMV", "Remarks"]])
 
                 # ⬇ CSV Download
-                csv_data = fsd_df.to_csv(index=False).encode("utf-8")
+                csv_data = dmv_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "⬇ Download FSD Report CSV",
+                    f"⬇ Download DMV Report CSV ({chosen_format})",
                     data=csv_data,
-                    file_name=f"fsd_report_in_{selected_format}.csv",
+                    file_name=f"dmv_report_{selected_player}_{chosen_format}.csv",
                     mime="text/csv"
                 )
 
                 # 📊 Bar Chart
                 bar_fig = px.bar(
-                    fsd_df, x="Player", y="FSD", color="Remarks", text_auto=True,
-                    title=f"FSD in {selected_format}"
+                    dmv_df, x="Dismissal_Mode", y="DMV", color="Remarks", text_auto=True,
+                    title=f"Dismissal Mode Vulnerability for {selected_player} — {chosen_format}"
                 )
-                _dark_layout(bar_fig, xlab="Player", ylab="FSD")
+                _dark_layout(bar_fig, xlab="Dismissal Mode", ylab="DMV %")
                 st.plotly_chart(bar_fig, use_container_width=True)
-
-                # 🐝 Beehive Plot
-                st.subheader("🐝 Beehive Plot (Impact in Format)")
-                bee_plot = px.strip(
-                    fsd_df,
-                    x="Primary Role",
-                    y="FSD",
-                    hover_data=["Player", "Remarks"],
-                    color="Remarks",
-                    stripmode="overlay",
-                    title=f"Beehive Plot of FSD in {selected_format}"
-                )
-                bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
-                _dark_layout(bee_plot, xlab="Role", ylab="FSD")
-                st.plotly_chart(bee_plot, use_container_width=True)
 
                 # 🔍 Conclusion
                 st.subheader("🔍 Conclusion & Insights")
-                if len(fsd_df) > 0:
-                    top_player = fsd_df.iloc[0]
-                    least_player = fsd_df.iloc[-1]
-                    st.success(
-                        f"🏅 **Top Format Specialist:** {top_player['Player']} ({top_player['Primary Role']}) "
-                        f"with an FSD of `{top_player['FSD']:.2f}` in **{selected_format}**."
-                    )
+                if len(dmv_df) > 0:
+                    top_vuln = dmv_df.iloc[0]
+                    least_vuln = dmv_df.iloc[-1]
                     st.error(
-                        f"📉 **Weakest Performer in {selected_format}:** {least_player['Player']} ({least_player['Primary Role']}) "
-                        f"with an FSD of `{least_player['FSD']:.2f}`."
+                        f"🚨 **Most Vulnerable:** {selected_player} ({top_vuln['Primary Role']}) "
+                        f"is most often dismissed by **{top_vuln['Dismissal_Mode']}** "
+                        f"({top_vuln['DMV']:.2f}% of dismissals)."
+                    )
+                    st.success(
+                        f"✅ **Safest Mode:** Rarely dismissed by **{least_vuln['Dismissal_Mode']}** "
+                        f"({least_vuln['DMV']:.2f}%)."
                     )
 
                     st.markdown("### 📝 Remarks Summary")
-                    summary_counts = fsd_df["Remarks"].value_counts().to_dict()
+                    summary_counts = dmv_df["Remarks"].value_counts().to_dict()
                     for remark, count in summary_counts.items():
-                        st.markdown(f"- **{remark}**: {count} player(s)")
+                        st.markdown(f"- **{remark}**: {count} mode(s)")
                 else:
-                    st.info("No records found for this format.")
+                    st.info("No dismissal data available for this player.")
 
             # --- Footer ---
             st.markdown("---")
@@ -966,482 +865,4 @@ elif selected_feature == "Format Specialization Dilemma":
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
 
     else:
-        st.info("📁 Please upload a CSV file to proceed with FSD calculation.")
-
-# ------------------ UNSTABLE PERFORMANCE ISSUE ------------------
-elif selected_feature == "Unstable Performance Issue":
-    st.subheader("🌪️ Unstable Performance Issue (UPI) - Variability & Consistency Analysis Across Formats")
-
-    upi_file = st.file_uploader("📂 Upload CSV with Player Match-by-Match Stats (Multi-Format Supported)", type="csv", key="upi_upload")
-
-    # ---------- Helpers ----------
-    def _dark_layout(fig, title=None, xlab=None, ylab=None):
-        fig.update_layout(
-            plot_bgcolor="#0b132b",
-            paper_bgcolor="#0b132b",
-            font=dict(color="white"),
-            xaxis_title=xlab,
-            yaxis_title=ylab,
-            title=title,
-            legend_title="Legend"
-        )
-        return fig
-
-    if upi_file:
-        df = pd.read_csv(upi_file)
-
-        required_columns = [
-            "Player", "Primary Role", "Format", "Runs", "Balls_Faced",
-            "Wickets", "Overs_Bowled", "Runs_Conceded",
-            "Catches", "Run_Outs", "Stumpings"
-        ]
-
-        if all(col in df.columns for col in required_columns):
-            st.success("✅ File loaded with all required columns.")
-
-            # -------------------- Match Metric Functions --------------------
-            def batting_metric(runs, balls):
-                if pd.isna(balls) or balls == 0:
-                    return 0.0
-                strike_rate = (runs / balls) * 100
-                return runs * 0.6 + strike_rate * 0.4
-
-            def bowling_metric(wkts, overs, runs_conceded):
-                if pd.isna(overs) or overs == 0:
-                    return 0.0
-                econ = runs_conceded / overs
-                return (wkts * 20) - (econ * 2)
-
-            def fielding_metric(catches, run_outs, stumpings):
-                return (catches * 8) + (run_outs * 10) + (stumpings * 12)
-
-            def calculate_metric(row):
-                role = str(row["Primary Role"]).strip().lower()
-                bat = batting_metric(row["Runs"], row["Balls_Faced"])
-                bowl = bowling_metric(row["Wickets"], row["Overs_Bowled"], row["Runs_Conceded"])
-                fld = fielding_metric(row["Catches"], row["Run_Outs"], row["Stumpings"])
-
-                if role == "batter":
-                    return bat
-                elif role == "bowler":
-                    return bowl
-                elif role == "all-rounder":
-                    return (bat + bowl) / 2.0
-                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
-                    return bat + (fld * 0.5)
-                else:
-                    return bat  # default fallback
-
-            # Fill missing numeric values
-            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
-            df[num_cols] = df[num_cols].fillna(0)
-
-            df["Match_Metric"] = df.apply(calculate_metric, axis=1)
-
-            # -------------------- UPI Calculation --------------------
-            import numpy as np
-
-            def instability_measures(sub):
-                values = sub["Match_Metric"].tolist()
-                if len(values) < 2:
-                    return pd.Series({
-                        "Mean": np.mean(values),
-                        "SD": 0,
-                        "CV": 0,
-                        "FailureRate": 0,
-                        "AvgMovingRange": 0,
-                        "UPI": 0
-                    })
-
-                mean_val = np.mean(values)
-                sd_val = np.std(values, ddof=1)
-                cv_val = sd_val / mean_val if mean_val != 0 else 0
-                failures = sum(1 for v in values if v < 10) / len(values) * 100
-                mr = np.mean([abs(values[i] - values[i-1]) for i in range(1, len(values))])
-                upi_score = (cv_val * 50) + (failures * 0.3) + (mr * 0.2)
-
-                return pd.Series({
-                    "Mean": mean_val,
-                    "SD": sd_val,
-                    "CV": cv_val,
-                    "FailureRate": failures,
-                    "AvgMovingRange": mr,
-                    "UPI": upi_score
-                })
-
-            # 🔑 Now group by Format also
-            upi_all = df.groupby(["Player", "Primary Role", "Format"]).apply(instability_measures).reset_index()
-
-            # -------------------- Remarks --------------------
-            def add_remarks(upi_df):
-                max_upi = upi_df["UPI"].max() if len(upi_df) else 0
-                def remark(x):
-                    if x == 0:
-                        return "✅ Stable (No Variability)"
-                    elif x <= 0.3 * max_upi:
-                        return "✅ Stable"
-                    elif x <= 0.6 * max_upi:
-                        return "⚠️ Moderate Instability"
-                    elif x <= 0.8 * max_upi:
-                        return "🔥 High Instability"
-                    else:
-                        return "🌪️ Very Unstable"
-                upi_df["Remarks"] = upi_df["UPI"].apply(remark)
-                return upi_df
-
-            upi_all = add_remarks(upi_all)
-
-            # -------------------- View Mode --------------------
-            view_choice = st.selectbox(
-                "🔎 View Mode",
-                ["Summary View", "Format-wise Deep-Dive", "Player-wise Deep-Dive"],
-                help="Choose 'Summary' for overview, 'Format-wise' for breakdown, or 'Player-wise' for individual analysis."
-            )
-
-            import plotly.express as px
-            import plotly.graph_objects as go
-
-            if view_choice == "Summary View":
-                st.subheader("🌐 Summary of Instability (UPI)")
-
-                # Average UPI per Role × Format
-                avg_upi = upi_all.groupby(["Primary Role", "Format"], as_index=False)["UPI"].mean().sort_values("UPI", ascending=False)
-                fig_avg = px.bar(
-                    avg_upi, x="Primary Role", y="UPI", color="Format", barmode="group",
-                    title="Average UPI by Role and Format", text_auto=True
-                )
-                _dark_layout(fig_avg, xlab="Role", ylab="Average UPI")
-                st.plotly_chart(fig_avg, use_container_width=True)
-
-                # 🐝 Beehive Plot Replacement (simulate jitter with scatter)
-                import numpy as np
-                jittered = upi_all.copy()
-                jittered["jitter_x"] = jittered["Primary Role"].apply(lambda r: list(upi_all["Primary Role"].unique()).index(r))
-                jittered["jitter_x"] = jittered["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered))
-
-                fig_bee = px.scatter(
-                    jittered, x="jitter_x", y="UPI", color="Format",
-                    hover_data=["Player", "Primary Role", "Format"],
-                    title="Beehive Plot of UPI Distribution Across Roles & Formats"
-                )
-                fig_bee.update_xaxes(
-                    tickvals=list(range(len(upi_all["Primary Role"].unique()))),
-                    ticktext=upi_all["Primary Role"].unique()
-                )
-                _dark_layout(fig_bee, xlab="Role", ylab="UPI")
-                st.plotly_chart(fig_bee, use_container_width=True)
-
-                # Downloads
-                st.download_button(
-                    "⬇ Download Full UPI Report",
-                    data=upi_all.to_csv(index=False).encode("utf-8"),
-                    file_name="upi_all_players.csv",
-                    mime="text/csv"
-                )
-
-                # Insights
-                st.subheader("🔍 Summary Insights")
-                top_unstable = upi_all.loc[upi_all["UPI"].idxmax()]
-                low_unstable = upi_all.loc[upi_all["UPI"].idxmin()]
-                st.info(
-                    f"🌪️ **Most Unstable Player:** {top_unstable['Player']} ({top_unstable['Primary Role']} - {top_unstable['Format']}) "
-                    f"with UPI `{top_unstable['UPI']:.2f}`\n\n"
-                    f"✅ **Most Stable Player:** {low_unstable['Player']} ({low_unstable['Primary Role']} - {low_unstable['Format']}) "
-                    f"with UPI `{low_unstable['UPI']:.2f}`."
-                )
-
-            elif view_choice == "Format-wise Deep-Dive":
-                st.subheader("📊 Format-wise Instability Deep-Dive")
-                selected_format = st.selectbox("Select Format", sorted(upi_all["Format"].unique().tolist()))
-                format_df = upi_all[upi_all["Format"] == selected_format]
-
-                fig_box = px.box(format_df, x="Primary Role", y="UPI", color="Primary Role",
-                                 title=f"UPI Distribution by Role in {selected_format}")
-                _dark_layout(fig_box)
-                st.plotly_chart(fig_box, use_container_width=True)
-
-                # Beehive replacement
-                jittered_fmt = format_df.copy()
-                jittered_fmt["jitter_x"] = jittered_fmt["Primary Role"].apply(lambda r: list(format_df["Primary Role"].unique()).index(r))
-                jittered_fmt["jitter_x"] = jittered_fmt["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered_fmt))
-
-                fig_bee_fmt = px.scatter(
-                    jittered_fmt, x="jitter_x", y="UPI", color="Primary Role",
-                    hover_data=["Player", "Format"],
-                    title=f"Beehive Plot of UPI in {selected_format}"
-                )
-                fig_bee_fmt.update_xaxes(
-                    tickvals=list(range(len(format_df["Primary Role"].unique()))),
-                    ticktext=format_df["Primary Role"].unique()
-                )
-                _dark_layout(fig_bee_fmt, xlab="Role", ylab="UPI")
-                st.plotly_chart(fig_bee_fmt, use_container_width=True)
-
-                st.dataframe(format_df)
-
-            else:
-                st.subheader("🧭 Player-wise Deep-Dive on Instability")
-                selected_player = st.selectbox("Select Player", sorted(upi_all["Player"].unique().tolist()))
-                sub_df = df[df["Player"] == selected_player].reset_index(drop=True)
-
-                if len(sub_df) > 0:
-                    st.markdown(f"### 📋 Match-by-Match Metrics for {selected_player}")
-                    st.dataframe(sub_df[["Player", "Primary Role", "Format", "Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings", "Match_Metric"]])
-
-                    # Trend chart
-                    fig_line = go.Figure()
-                    for fmt in sub_df["Format"].unique():
-                        temp = sub_df[sub_df["Format"] == fmt]
-                        fig_line.add_trace(go.Scatter(
-                            y=temp["Match_Metric"],
-                            x=list(range(1, len(temp) + 1)),
-                            mode="lines+markers",
-                            name=f"{fmt}"
-                        ))
-                    _dark_layout(fig_line, xlab="Match #", ylab="Metric", title=f"Match-to-Match Instability for {selected_player}")
-                    st.plotly_chart(fig_line, use_container_width=True)
-
-                    # Beehive replacement
-                    jittered_player = sub_df.copy()
-                    jittered_player["jitter_x"] = jittered_player["Format"].apply(lambda f: list(sub_df["Format"].unique()).index(f))
-                    jittered_player["jitter_x"] = jittered_player["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered_player))
-
-                    fig_bee_player = px.scatter(
-                        jittered_player, x="jitter_x", y="Match_Metric", color="Format",
-                        hover_data=["Player", "Format"],
-                        title=f"Beehive Plot of Match Metrics for {selected_player}"
-                    )
-                    fig_bee_player.update_xaxes(
-                        tickvals=list(range(len(sub_df["Format"].unique()))),
-                        ticktext=sub_df["Format"].unique()
-                    )
-                    _dark_layout(fig_bee_player, xlab="Format", ylab="Match Metric")
-                    st.plotly_chart(fig_bee_player, use_container_width=True)
-
-                    # Player summary
-                    player_summary = upi_all[upi_all["Player"] == selected_player]
-                    st.markdown("### 📝 Player Instability Summary")
-                    st.dataframe(player_summary)
-                else:
-                    st.info("No records found for this player.")
-
-            # --- Footer ---
-            st.markdown("---")
-            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
-            st.markdown(
-                """
-                <hr style="margin-top: 50px;"/>
-                <div style='text-align: center; color: gray; font-size: 14px;'>
-                    © 2025 <b>TrueXI</b>. All rights reserved.
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-
-        else:
-            missing_cols = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
-
-    else:
-        st.info("📁 Please upload a CSV file to proceed with UPI calculation.")
-
-# ------------------ TRANSITION MISMANAGEMENT INDEX ------------------
-elif selected_feature == "Transition Mismanagement":
-    st.subheader("🔄 Transition Mismanagement Index (TMI) - Collapse & Phase Handling")
-
-    tmi_file = st.file_uploader("📂 Upload CSV with Ball-by-Ball or Partnership Stats", type="csv", key="tmi_upload")
-
-    # ---------- Helpers ----------
-    def _dark_layout(fig, title=None, xlab=None, ylab=None):
-        fig.update_layout(
-            plot_bgcolor="#0b132b",
-            paper_bgcolor="#0b132b",
-            font=dict(color="white"),
-            xaxis_title=xlab,
-            yaxis_title=ylab,
-            title=title,
-            legend_title="Legend"
-        )
-        return fig
-
-    if tmi_file:
-        df = pd.read_csv(tmi_file)
-
-        required_columns = [
-            "Match_ID", "Player", "NonStriker", "Primary Role", "Format",
-            "Over", "Runs_Scored", "Wickets_Fallen", "Partnership_Runs"
-        ]
-
-        if all(col in df.columns for col in required_columns):
-            st.success("✅ File loaded with all required columns, including NonStriker.")
-
-            # -------------------- Format-Aware Parameters --------------------
-            format_params = {
-                "T20": {"collapse_window": 3, "recovery_thresh": 20, "phases": [(1,6),(7,15),(16,20)]},
-                "ODI": {"collapse_window": 5, "recovery_thresh": 30, "phases": [(1,10),(11,40),(41,50)]},
-            }
-
-            # -------------------- TMI Metric Functions --------------------
-            import numpy as np
-
-            def collapse_sensitivity(sub, fmt):
-                """% of times ≥2 wickets fell in collapse_window overs after dismissal"""
-                window = format_params.get(fmt, format_params["ODI"])["collapse_window"]
-                dismissals = sub[sub["Wickets_Fallen"] > 0]
-                count, trigger = 0, 0
-                for i in dismissals.index:
-                    trigger += 1
-                    post_window = sub.loc[i+1:i+window, "Wickets_Fallen"].sum()
-                    if post_window >= 2:
-                        count += 1
-                return (count / trigger * 100) if trigger > 0 else 0
-
-            def momentum_drop(sub, fmt):
-                """Max drop between sequential phases"""
-                phases = format_params.get(fmt, format_params["ODI"])["phases"]
-                phase_rates = []
-                for (start, end) in phases:
-                    phase_runs = sub[(sub["Over"] >= start) & (sub["Over"] <= end)]["Runs_Scored"].sum()
-                    phase_overs = len(sub[(sub["Over"] >= start) & (sub["Over"] <= end)])
-                    rr = phase_runs / max(1, phase_overs)
-                    phase_rates.append(rr)
-                # check sequential drops
-                drops = [max(0, phase_rates[i] - phase_rates[i+1]) for i in range(len(phase_rates)-1)]
-                return max(drops) if drops else 0
-
-            def recovery_failure_rate(sub, fmt):
-                """% of times next partnership < threshold"""
-                thresh = format_params.get(fmt, format_params["ODI"])["recovery_thresh"]
-                total, fails = 0, 0
-                for val in sub["Partnership_Runs"]:
-                    total += 1
-                    if val < thresh:
-                        fails += 1
-                return (fails / total * 100) if total > 0 else 0
-
-            def tmi_measures(sub):
-                fmt = sub["Format"].iloc[0] if len(sub) > 0 else "ODI"
-                cs = collapse_sensitivity(sub, fmt)
-                md = momentum_drop(sub, fmt)
-                rfr = recovery_failure_rate(sub, fmt)
-
-                # Normalize each to 0-100
-                cs_n, md_n, rfr_n = min(cs,100), min(md*10,100), min(rfr,100)
-
-                tmi_score = (cs_n * 0.4) + (md_n * 0.3) + (rfr_n * 0.3)
-                return pd.Series({
-                    "CollapseSensitivity": cs,
-                    "MomentumDrop": md,
-                    "RecoveryFailureRate": rfr,
-                    "TMI": tmi_score
-                })
-
-            # 🔑 Group by Partnership × Format
-            tmi_all = df.groupby(["Player", "NonStriker", "Primary Role", "Format"]).apply(tmi_measures).reset_index()
-
-            # -------------------- Remarks --------------------
-            def add_remarks(tmi_df):
-                max_tmi = tmi_df["TMI"].max() if len(tmi_df) else 0
-                def remark(x):
-                    if x == 0:
-                        return "✅ Excellent Transition Handling"
-                    elif x <= 0.3 * max_tmi:
-                        return "✅ Stable"
-                    elif x <= 0.6 * max_tmi:
-                        return "⚠️ Moderate Mismanagement"
-                    elif x <= 0.8 * max_tmi:
-                        return "🔥 High Mismanagement"
-                    else:
-                        return "🌪️ Very Poor Transition Handling"
-                tmi_df["Remarks"] = tmi_df["TMI"].apply(remark)
-                return tmi_df
-
-            tmi_all = add_remarks(tmi_all)
-
-            # -------------------- View Modes --------------------
-            view_choice = st.selectbox(
-                "🔎 View Mode",
-                ["Summary View", "Format-wise Deep-Dive", "Partnership-wise Deep-Dive"],
-                help="Choose 'Summary' for overview, 'Format-wise' for breakdown, or 'Partnership-wise' for individual batter pair analysis."
-            )
-
-            import plotly.express as px
-
-            if view_choice == "Summary View":
-                st.subheader("🌐 Summary of Transition Mismanagement (TMI)")
-
-                avg_tmi = tmi_all.groupby(["Primary Role", "Format"], as_index=False)["TMI"].mean().sort_values("TMI", ascending=False)
-                fig_avg = px.bar(
-                    avg_tmi, x="Primary Role", y="TMI", color="Format", barmode="group",
-                    title="Average TMI by Role and Format", text_auto=True
-                )
-                _dark_layout(fig_avg, xlab="Role", ylab="Average TMI")
-                st.plotly_chart(fig_avg, use_container_width=True)
-
-                # Beehive plot
-                jittered = tmi_all.copy()
-                jittered["jitter_x"] = jittered["Primary Role"].apply(lambda r: list(tmi_all["Primary Role"].unique()).index(r))
-                jittered["jitter_x"] = jittered["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered))
-
-                fig_bee = px.scatter(
-                    jittered, x="jitter_x", y="TMI", color="Format",
-                    hover_data=["Player", "NonStriker", "Primary Role", "Format"],
-                    title="Beehive Plot of TMI Distribution"
-                )
-                fig_bee.update_xaxes(
-                    tickvals=list(range(len(tmi_all["Primary Role"].unique()))),
-                    ticktext=tmi_all["Primary Role"].unique()
-                )
-                _dark_layout(fig_bee, xlab="Role", ylab="TMI")
-                st.plotly_chart(fig_bee, use_container_width=True)
-
-                st.download_button(
-                    "⬇ Download Full TMI Report",
-                    data=tmi_all.to_csv(index=False).encode("utf-8"),
-                    file_name="tmi_all_partnerships.csv",
-                    mime="text/csv"
-                )
-
-            elif view_choice == "Format-wise Deep-Dive":
-                st.subheader("📊 Format-wise TMI Deep-Dive")
-                selected_format = st.selectbox("Select Format", sorted(tmi_all["Format"].unique().tolist()))
-                format_df = tmi_all[tmi_all["Format"] == selected_format]
-
-                fig_box = px.box(format_df, x="Primary Role", y="TMI", color="Primary Role",
-                                 title=f"TMI Distribution by Role in {selected_format}")
-                _dark_layout(fig_box)
-                st.plotly_chart(fig_box, use_container_width=True)
-
-                st.dataframe(format_df)
-
-            else:
-                st.subheader("🤝 Partnership-wise Deep-Dive on TMI")
-                selected_pair = st.selectbox(
-                    "Select Partnership",
-                    sorted(tmi_all[["Player", "NonStriker"]].apply(lambda x: f"{x['Player']} & {x['NonStriker']}", axis=1).unique().tolist())
-                )
-
-                p1, p2 = selected_pair.split(" & ")
-                sub_df = df[((df["Player"] == p1) & (df["NonStriker"] == p2)) | ((df["Player"] == p2) & (df["NonStriker"] == p1))].reset_index(drop=True)
-
-                if len(sub_df) > 0:
-                    st.markdown(f"### 📋 Match Data for Partnership: {selected_pair}")
-                    st.dataframe(sub_df[["Match_ID", "Over", "Player", "NonStriker", "Runs_Scored", "Wickets_Fallen", "Partnership_Runs"]])
-
-                    pair_summary = tmi_all[((tmi_all["Player"] == p1) & (tmi_all["NonStriker"] == p2)) | ((tmi_all["Player"] == p2) & (tmi_all["NonStriker"] == p1))]
-                    st.markdown("### 📝 Partnership TMI Summary")
-                    st.dataframe(pair_summary)
-                else:
-                    st.info("No records found for this partnership.")
-
-            # --- Footer ---
-            st.markdown("---")
-            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
-        else:
-            missing_cols = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
-
-    else:
-        st.info("📁 Please upload a CSV file to proceed with TMI calculation.")
+        st.info("📁 Please upload a CSV file to proceed with DMV calculation.")
