@@ -57,7 +57,9 @@ st.sidebar.title("📊 Unbiased Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
     "Opponent-Specific Impact Scores",
-    "Dismissal Mode Vulnerability"            
+    "Dismissal Mode Vulnerability",
+    "Conversion vs Opposition",
+    "Performance to Opportunity Ratio"
     ])
 
 # ------------------ HEADER ------------------
@@ -866,3 +868,411 @@ elif selected_feature == "Dismissal Mode Vulnerability":
 
     else:
         st.info("📁 Please upload a CSV file to proceed with DMV calculation.")
+
+# ------------------ CONVERSION VS OPPOSITION (CVO) ------------------
+elif selected_feature == "Conversion vs Opposition":
+    st.subheader("🎯 Conversion vs Opposition (CVO) - Consistency Analysis")
+
+    cvo_file = st.file_uploader("📂 Upload CSV with Player Batting Stats", type="csv", key="cvo_upload")
+
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
+
+    if cvo_file:
+        df = pd.read_csv(cvo_file)
+
+        required_columns = ["Player", "Primary Role", "Format", "Opponent", "Runs"]
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns.")
+
+            # -------------------- Mark Milestones --------------------
+            def classify_innings(runs):
+                if runs >= 100:
+                    return "100+"
+                elif runs >= 50:
+                    return "50-99"
+                else:
+                    return "<50"
+
+            df["Milestone"] = df["Runs"].apply(classify_innings)
+
+            # -------------------- Count Milestones --------------------
+            milestone_counts = (
+                df.groupby(["Player", "Primary Role", "Format", "Opponent", "Milestone"])
+                .size()
+                .reset_index(name="Innings_Count")
+            )
+
+            # Pivot to get 50s and 100s counts
+            pivot_milestones = milestone_counts.pivot_table(
+                index=["Player", "Primary Role", "Format", "Opponent"],
+                columns="Milestone",
+                values="Innings_Count",
+                fill_value=0
+            ).reset_index()
+
+            # Ensure required cols exist
+            for col in ["50-99", "100+"]:
+                if col not in pivot_milestones.columns:
+                    pivot_milestones[col] = 0
+
+            # -------------------- Conversion Rate --------------------
+            pivot_milestones["Total_50s_100s"] = pivot_milestones["50-99"] + pivot_milestones["100+"]
+            pivot_milestones["Conversion_Rate"] = pivot_milestones.apply(
+                lambda r: (r["100+"] / r["Total_50s_100s"] * 100) if r["Total_50s_100s"] > 0 else 0.0,
+                axis=1
+            )
+
+            # -------------------- Remarks --------------------
+            def add_conversion_remarks(rate):
+                if rate >= 50:
+                    return "🏆 Elite Converter"
+                elif rate >= 35:
+                    return "🔥 Strong Converter"
+                elif rate >= 20:
+                    return "😐 Moderate"
+                elif rate > 0:
+                    return "⚠️ Poor Conversion"
+                else:
+                    return "❌ No Conversion"
+
+            pivot_milestones["Remarks"] = pivot_milestones["Conversion_Rate"].apply(add_conversion_remarks)
+
+            # -------------------- Format Filter --------------------
+            format_list = sorted(pivot_milestones["Format"].unique().tolist())
+            chosen_format = st.selectbox("📌 Select Format", format_list)
+
+            cvo_all_fmt = pivot_milestones[pivot_milestones["Format"] == chosen_format]
+
+            # -------------------- View Switcher --------------------
+            opponent_list = sorted(cvo_all_fmt["Opponent"].unique().tolist())
+            view_choice = st.selectbox(
+                "🔎 View Mode",
+                ["All Opponents (Summary)"] + opponent_list,
+                help="Choose 'All Opponents' for an overview or pick an opponent for a deep-dive."
+            )
+
+            # -------------------- ALL OPPONENTS (SUMMARY) --------------------
+            if view_choice == "All Opponents (Summary)":
+                st.subheader(f"🌐 Conversion Summary Across All Opponents — {chosen_format}")
+
+                # Heatmap
+                pivot_heat = cvo_all_fmt.pivot_table(
+                    index="Player", columns="Opponent", values="Conversion_Rate", aggfunc="mean"
+                ).fillna(0).round(2)
+
+                import plotly.express as px
+                fig_heat = px.imshow(
+                    pivot_heat,
+                    labels=dict(x="Opponent", y="Player", color="Conversion %"),
+                    aspect="auto",
+                    title=f"Conversion vs Opponents Heatmap ({chosen_format})"
+                )
+                _dark_layout(fig_heat)
+                st.plotly_chart(fig_heat, use_container_width=True)
+
+                # Average Conversion by Opponent
+                avg_by_opp = (
+                    cvo_all_fmt.groupby("Opponent", as_index=False)["Conversion_Rate"].mean()
+                    .sort_values("Conversion_Rate", ascending=False)
+                )
+                fig_avg = px.bar(
+                    avg_by_opp, x="Opponent", y="Conversion_Rate", text_auto=True,
+                    title=f"Average Conversion Rate by Opponent — {chosen_format}"
+                )
+                _dark_layout(fig_avg, xlab="Opponent", ylab="Avg Conversion %")
+                st.plotly_chart(fig_avg, use_container_width=True)
+
+                # Best & Worst Opponent per Player
+                best = cvo_all_fmt.loc[cvo_all_fmt.groupby("Player")["Conversion_Rate"].idxmax()].rename(
+                    columns={"Opponent": "Best_Opponent", "Conversion_Rate": "Best_CVO"}
+                )
+                worst = cvo_all_fmt.loc[cvo_all_fmt.groupby("Player")["Conversion_Rate"].idxmin()].rename(
+                    columns={"Opponent": "Worst_Opponent", "Conversion_Rate": "Worst_CVO"}
+                )
+                bw = best[["Player", "Primary Role", "Best_Opponent", "Best_CVO"]].merge(
+                    worst[["Player", "Worst_Opponent", "Worst_CVO"]],
+                    on="Player", how="left"
+                )
+                st.markdown("**Best vs Worst Opponent per Player**")
+                st.dataframe(bw.reset_index(drop=True))
+
+                # Download
+                st.download_button(
+                    f"⬇ Download Full Conversion Data ({chosen_format})",
+                    data=cvo_all_fmt.to_csv(index=False).encode("utf-8"),
+                    file_name=f"conversion_vs_opposition_{chosen_format}.csv",
+                    mime="text/csv"
+                )
+
+                # Insights
+                st.subheader("🔍 Summary Insights")
+                top_opp = avg_by_opp.iloc[0]
+                low_opp = avg_by_opp.iloc[-1]
+                st.info(
+                    f"✅ **Best opponent for conversion in {chosen_format}:** **{top_opp['Opponent']}** "
+                    f"(avg `{top_opp['Conversion_Rate']:.2f}%`)\n\n"
+                    f"⚠️ **Toughest opponent to convert against:** **{low_opp['Opponent']}** "
+                    f"(avg `{low_opp['Conversion_Rate']:.2f}%`)."
+                )
+
+            # -------------------- SINGLE OPPONENT (DEEP-DIVE) --------------------
+            else:
+                selected_opp = view_choice
+                st.subheader(f"🧭 Deep-Dive: Conversion vs **{selected_opp}** — {chosen_format}")
+
+                cvo_df = (
+                    cvo_all_fmt[cvo_all_fmt["Opponent"] == selected_opp]
+                    .copy()
+                    .sort_values("Conversion_Rate", ascending=False)
+                    .reset_index(drop=True)
+                )
+
+                # 📋 Conversion Report
+                st.markdown(f"### 📋 Conversion Report vs {selected_opp} — {chosen_format}")
+                st.dataframe(cvo_df[["Player", "Primary Role", "50-99", "100+", "Total_50s_100s", "Conversion_Rate", "Remarks"]])
+
+                # ⬇ CSV Download
+                csv_data = cvo_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    f"⬇ Download Conversion Report CSV ({chosen_format})",
+                    data=csv_data,
+                    file_name=f"conversion_report_vs_{selected_opp}_{chosen_format}.csv",
+                    mime="text/csv"
+                )
+
+                # 📊 Bar Chart
+                bar_fig = px.bar(
+                    cvo_df, x="Player", y="Conversion_Rate", color="Remarks", text_auto=True,
+                    title=f"Conversion Rate vs {selected_opp} — {chosen_format}"
+                )
+                _dark_layout(bar_fig, xlab="Player", ylab="Conversion %")
+                st.plotly_chart(bar_fig, use_container_width=True)
+
+                # 🔍 Conclusion
+                st.subheader("🔍 Conclusion & Insights")
+                if len(cvo_df) > 0:
+                    top_player = cvo_df.iloc[0]
+                    least_player = cvo_df.iloc[-1]
+                    st.success(
+                        f"🏅 **Top Converter:** {top_player['Player']} ({top_player['Primary Role']}) "
+                        f"with `{top_player['Conversion_Rate']:.2f}%` conversion vs {selected_opp}."
+                    )
+                    st.error(
+                        f"📉 **Weakest Converter:** {least_player['Player']} ({least_player['Primary Role']}) "
+                        f"with just `{least_player['Conversion_Rate']:.2f}%` conversion vs {selected_opp}."
+                    )
+
+                    st.markdown("### 📝 Remarks Summary")
+                    summary_counts = cvo_df["Remarks"].value_counts().to_dict()
+                    for remark, count in summary_counts.items():
+                        st.markdown(f"- **{remark}**: {count} player(s)")
+                else:
+                    st.info("No conversion data available for this opponent.")
+
+            # --- Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with Conversion vs Opposition.")
+
+# ------------------ PERFORMANCE TO OPPORTUNITY RATIO (PTOR) ------------------
+elif selected_feature == "Performance to Opportunity Ratio":
+    st.subheader("📊 Performance to Opportunity Ratio (PTOR) - Fairness Index")
+
+    ptor_file = st.file_uploader("📂 Upload CSV with Player Match Stats", type="csv", key="ptor_upload")
+
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
+
+    if ptor_file:
+        df = pd.read_csv(ptor_file)
+
+        required_columns = [
+            "Player", "Primary Role", "Format", "Opponent",
+            "Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Catches", "Run_Outs", "Stumpings"
+        ]
+
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns (including Format).")
+
+            # -------------------- Performance Calculation --------------------
+            def batting_perf(runs, balls):
+                if pd.isna(balls) or balls == 0: return 0.0
+                strike_rate = (runs / balls) * 100.0
+                return (runs * 0.6) + (strike_rate * 0.4)
+
+            def bowling_perf(wickets, overs, runs_conceded):
+                if pd.isna(overs) or overs == 0: return 0.0
+                economy = runs_conceded / overs
+                return (wickets * 20 * 0.7) + ((6 - economy) * 10 * 0.3)
+
+            def fielding_perf(catches, run_outs, stumpings):
+                return (catches * 10) + (run_outs * 12) + (stumpings * 15)
+
+            def calculate_total_performance(row):
+                role = str(row["Primary Role"]).strip().lower()
+                runs, balls = row["Runs"], row["Balls_Faced"]
+                wkts, overs, rc = row["Wickets"], row["Overs_Bowled"], row["Runs_Conceded"]
+                catches, ro, stp = row["Catches"], row["Run_Outs"], row["Stumpings"]
+
+                if role == "batter":
+                    return batting_perf(runs, balls)
+                elif role == "bowler":
+                    return bowling_perf(wkts, overs, rc)
+                elif role == "all-rounder":
+                    return (batting_perf(runs, balls) + bowling_perf(wkts, overs, rc)) / 2.0
+                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
+                    return batting_perf(runs, balls) + (fielding_perf(catches, ro, stp) * 0.5)
+                else:
+                    return batting_perf(runs, balls)
+
+            # Fill missing numerics with 0
+            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
+            df[num_cols] = df[num_cols].fillna(0)
+
+            # Calculate per match performance
+            df["Performance"] = df.apply(calculate_total_performance, axis=1)
+
+            # -------------------- PTOR Calculation --------------------
+            perf_agg = (
+                df.groupby(["Player", "Primary Role", "Format"], as_index=False)
+                .agg({"Performance": "sum", "Opponent": "count"})
+                .rename(columns={"Opponent": "Opportunities"})
+            )
+            perf_agg["PTOR"] = perf_agg.apply(
+                lambda r: (r["Performance"] / r["Opportunities"]) if r["Opportunities"] > 0 else 0.0, axis=1
+            )
+
+            # -------------------- Remarks --------------------
+            def assign_remark(ptor, max_ptor):
+                if ptor == max_ptor:
+                    return "🏆 Best Utilizer"
+                elif ptor >= 0.8 * max_ptor:
+                    return "🔥 Excellent"
+                elif ptor >= 0.6 * max_ptor:
+                    return "✅ Good"
+                elif ptor >= 0.4 * max_ptor:
+                    return "⚠️ Mediocre"
+                else:
+                    return "🔻 Poor"
+
+            out_list = []
+            for fmt, sub in perf_agg.groupby("Format"):
+                sub = sub.copy()
+                max_ptor = sub["PTOR"].max() if len(sub) else 0
+                sub["Remarks"] = sub["PTOR"].apply(lambda x: assign_remark(x, max_ptor))
+                out_list.append(sub)
+            perf_agg = pd.concat(out_list, ignore_index=True)
+
+            # -------------------- Format Filter --------------------
+            format_list = sorted(perf_agg["Format"].unique().tolist())
+            chosen_format = st.selectbox("📌 Select Format", format_list)
+
+            ptor_fmt = perf_agg[perf_agg["Format"] == chosen_format]
+
+            # -------------------- Summary --------------------
+            st.subheader(f"🌐 PTOR Summary — {chosen_format}")
+
+            import plotly.express as px
+
+            # Bar Chart
+            bar_fig = px.bar(
+                ptor_fmt.sort_values("PTOR", ascending=False),
+                x="Player", y="PTOR", color="Remarks", text_auto=True,
+                title=f"PTOR by Player — {chosen_format}"
+            )
+            _dark_layout(bar_fig, xlab="Player", ylab="PTOR")
+            st.plotly_chart(bar_fig, use_container_width=True)
+
+            # Scatter Plot (Performance vs Opportunities)
+            scatter_fig = px.scatter(
+                ptor_fmt, x="Opportunities", y="Performance", size="PTOR", color="Remarks",
+                hover_data=["Player"],
+                title=f"Performance vs Opportunities — {chosen_format}"
+            )
+            _dark_layout(scatter_fig, xlab="Opportunities", ylab="Performance")
+            st.plotly_chart(scatter_fig, use_container_width=True)
+
+            # PTOR Table
+            st.markdown("**📋 PTOR Report**")
+            st.dataframe(ptor_fmt[["Player", "Primary Role", "Opportunities", "Performance", "PTOR", "Remarks"]])
+
+            # Download CSV
+            st.download_button(
+                f"⬇ Download PTOR Report ({chosen_format})",
+                data=ptor_fmt.to_csv(index=False).encode("utf-8"),
+                file_name=f"ptor_report_{chosen_format}.csv",
+                mime="text/csv"
+            )
+
+            # -------------------- Insights --------------------
+            st.subheader("🔍 Insights")
+            if len(ptor_fmt) > 0:
+                top_p = ptor_fmt.loc[ptor_fmt["PTOR"].idxmax()]
+                low_p = ptor_fmt.loc[ptor_fmt["PTOR"].idxmin()]
+                st.success(
+                    f"🏅 **Best Utilizer:** {top_p['Player']} ({top_p['Primary Role']}) "
+                    f"with a PTOR of `{top_p['PTOR']:.2f}` in {chosen_format}."
+                )
+                st.error(
+                    f"📉 **Least Efficient:** {low_p['Player']} ({low_p['Primary Role']}) "
+                    f"with a PTOR of `{low_p['PTOR']:.2f}` in {chosen_format}."
+                )
+
+            # --- Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with PTOR calculation.")
