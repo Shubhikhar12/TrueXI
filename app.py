@@ -531,10 +531,10 @@ elif selected_feature == "Opponent-Specific Impact Scores":
                 st.dataframe(bw.reset_index(drop=True))
 
                 # Top 5 per Opponent
-                st.markdown("**Top 10 Matchups per Opponent**")
+                st.markdown("**Top 6 Matchups per Opponent**")
                 for opp in opponent_list:
                     sub = osis_all_fmt[osis_all_fmt["Opponent"] == opp].sort_values("OSIS", ascending=False).head(5)
-                    st.markdown(f"**🏟️ {opp} — Top 10**")
+                    st.markdown(f"**🏟️ {opp} — Top 6**")
                     st.dataframe(sub[["Player", "Primary Role", "Opponent_Avg_Impact", "Overall_Avg_Impact", "OSIS", "Remarks"]].reset_index(drop=True))
 
                 # Downloads
