@@ -53,14 +53,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ------------------ SIDEBAR ------------------
-st.sidebar.title("📊 Unbiased XI Tools")
+st.sidebar.title("📊 Unbiased Tools")
 selected_feature = st.sidebar.radio("Select Feature", [
     "Main App Flow",
-    "Actual Performance Indicator",
-    "Opponent-Specific Impact Score",
-    "Format Adaptability Index",
-    "Pitch Adaptive XI Selector"
-])
+    "Opponent-Specific Impact Scores",
+    "Format Specialization Dilemma",
+    "Unstable Performance Issue",
+    "Transition Mismanagement"
+    ])
 
 # ------------------ HEADER ------------------
 st.image("app logo.png", width=150)
@@ -290,6 +290,28 @@ if selected_feature == "Main App Flow":
                 rohit_score = final_xi[final_xi["Player Name"].str.lower() == "rohit sharma"]["Leadership_Score"].values[0]
                 st.warning(f"⚠ Rohit Sharma is the current captain, but **{captain['Player Name']}** has a higher Leadership Score ({captain['Leadership_Score']:.2f}) vs Rohit's ({rohit_score:.2f}).")
 
+                
+            # ------------------ SUBSTITUTES ------------------
+            st.subheader("🛠️ Substitution Players (Bench)")
+            remaining_candidates = unbiased_df[~unbiased_df["Player Name"].isin(final_xi["Player Name"])]
+            substitutes = calculate_leadership_score(remaining_candidates).sort_values(
+                by=["Leadership_Score", "Fame_score"], ascending=False
+            ).head(4)
+
+            if substitutes.empty:
+                st.warning("⚠ No eligible substitutes available.")
+            else:
+                st.dataframe(substitutes[[
+                    "Player Name", "Primary Role", "Performance_score", "Fame_score", "Leadership_Score"
+                ]])
+
+                sub_csv = substitutes[[
+                    "Player Name", "Primary Role", "Performance_score", "Fame_score", "Leadership_Score"
+                ]].to_csv(index=False).encode("utf-8")
+
+                st.download_button("⬇ Download Substitutes CSV", sub_csv, "substitutes.csv", "text/csv")
+
+
         if "final_xi" in st.session_state:
             st.markdown("---")
             st.subheader("✍ Select Future Leadership Manually")
@@ -343,155 +365,9 @@ if selected_feature == "Main App Flow":
     unsafe_allow_html=True
 )
 
-# ------------------ ACTUAL PERFORMANCE INDICATOR ------------------
-elif selected_feature == "Actual Performance Indicator":
-    st.subheader("📈 Actual Performance Indicator (API) - With Format-Based Scoring")
-
-    api_file = st.file_uploader("📂 Upload CSV with Player Stats", type="csv", key="api_upload")
-
-    if api_file:
-        df = pd.read_csv(api_file)
-
-        required_columns = [
-            "Player Name", "Format", "Runs", "Strike_Rate", "Fours", "Sixes", "Wickets",
-            "Dot_Balls", "Maidens", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings", "Balls_Faced"
-        ]
-
-        if all(col in df.columns for col in required_columns):
-            st.success("✅ File loaded with all required columns.")
-
-            # -------------------- API Calculation Logic --------------------
-            def calculate_scores(row):
-                fmt = row["Format"]
-
-                # Batting
-                if fmt == "T20":
-                    batting = row["Runs"] + (row["Strike_Rate"] / 2.5) + (row["Fours"] * 1) + (row["Sixes"] * 1.5)
-                    bowling = (row["Wickets"] * 25) + (row["Dot_Balls"] * 1.2) + (row["Maidens"] * 12) - (row["Runs_Conceded"] / 2)
-                elif fmt == "ODI":
-                    batting = row["Runs"] + (row["Strike_Rate"] / 3) + (row["Fours"] * 1) + (row["Sixes"] * 1.2)
-                    bowling = (row["Wickets"] * 25) + (row["Dot_Balls"] * 1) + (row["Maidens"] * 12) - (row["Runs_Conceded"] / 2)
-                elif fmt == "Test":
-                    batting = row["Runs"] + (row["Balls_Faced"] / 2)
-                    bowling = (row["Wickets"] * 25) + (row["Maidens"] * 15) - (row["Runs_Conceded"] / 2)
-                else:
-                    batting = bowling = 0
-
-                # Fielding (same for all formats)
-                fielding = (row["Catches"] * 10) + (row["Run_Outs"] * 12) + (row["Stumpings"] * 15)
-
-                # API formula
-                api = (batting * 0.4) + (bowling * 0.4) + (fielding * 0.2)
-
-                return pd.Series([batting, bowling, fielding, api])
-
-            df[["Batting Score", "Bowling Score", "Fielding Score", "API"]] = df.apply(calculate_scores, axis=1)
-
-            # -------------------- Remarks Logic --------------------
-            def get_remark(api_score, max_api):
-                if api_score == max_api:
-                    return "🏆 Top Performer"
-                elif api_score >= 0.8 * max_api:
-                    return "🔥 Excellent"
-                elif api_score >= 0.6 * max_api:
-                    return "✅ Good"
-                elif api_score >= 0.4 * max_api:
-                    return "⚠️ Average"
-                else:
-                    return "🔻 Needs Improvement"
-
-            df_sorted = df.sort_values(by="API", ascending=False).reset_index(drop=True)
-            max_api = df_sorted["API"].max()
-            df_sorted["Remarks"] = df_sorted["API"].apply(lambda x: get_remark(x, max_api))
-
-            # 📋 API Report
-            st.subheader("📋 API Performance Report")
-            st.dataframe(df_sorted)
-
-            # ⬇ CSV Download
-            csv_data = df_sorted.to_csv(index=False).encode("utf-8")
-            st.download_button(
-                "⬇ Download API Report CSV",
-                data=csv_data,
-                file_name="api_performance_report.csv",
-                mime="text/csv"
-            )
-
-            # 📊 Bar Chart
-            import plotly.express as px
-            bar_fig = px.bar(
-                df_sorted, x="Player Name", y="API", color="Remarks", text_auto=True,
-                title="API Score by Player"
-            )
-            bar_fig.update_layout(
-                plot_bgcolor="#0b132b",
-                paper_bgcolor="#0b132b",
-                font=dict(color="white"),
-                xaxis_title="Player Name",
-                yaxis_title="API",
-                legend_title="Remarks"
-            )
-
-            st.plotly_chart(bar_fig, use_container_width=True)
-
-            # 🐝 Beehive Plot (Format-wise API Spread)
-            st.subheader("🐝 Beehive Plot (API vs Format)")
-            bee_plot = px.strip(
-                df_sorted,
-                x="Format",
-                y="API",
-                hover_data=["Player Name", "Remarks"],
-                color="Remarks",
-                stripmode="overlay",
-                title="Beehive Plot of API Across Formats"
-            )
-            bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
-            bee_plot.update_layout(
-                plot_bgcolor="#0b132b",
-                paper_bgcolor="#0b132b",
-                font=dict(color="white"),
-                xaxis_title="Format",
-                yaxis_title="API",
-                legend_title="Remarks"
-            )
-            st.plotly_chart(bee_plot, use_container_width=True)
-
-            # 🔍 Conclusion
-            st.subheader("🔍 Conclusion & Insights")
-            top_player = df_sorted.iloc[0]
-            least_player = df_sorted.iloc[-1]
-            st.success(f"🏅 **Top Performer:** {top_player['Player Name']} with an API of `{top_player['API']:.2f}` in **{top_player['Format']}** format.")
-            st.error(f"📉 **Least Performer:** {least_player['Player Name']} with an API of `{least_player['API']:.2f}`.")
-
-            st.markdown("### 📝 Remarks Summary:")
-            summary_counts = df_sorted["Remarks"].value_counts().to_dict()
-            for remark, count in summary_counts.items():
-                st.markdown(f"- **{remark}**: {count} player(s)")
-
-        else:
-            missing_cols = [col for col in required_columns if col not in df.columns]
-            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
-
-    else:
-        st.info("📁 Please upload a CSV file to proceed with API calculation.")
-
-    # --- Signature Footer ---
-    st.markdown("---")
-    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <hr style="margin-top: 50px;"/>
-        <div style='text-align: center; color: gray; font-size: 14px;'>
-            © 2025 <b>TrueXI</b>. All rights reserved.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
 # ------------------ OPPONENT-SPECIFIC IMPACT SCORE ------------------
-elif selected_feature == "Opponent-Specific Impact Score":
-    st.subheader("🎯 Opponent-Specific Impact Score (OSIS) - Matchup Analysis")
+elif selected_feature == "Opponent-Specific Impact Scores":
+    st.subheader("🎯 Opponent-Specific Impact Scores (OSIS) - Matchup Analysis")
 
     osis_file = st.file_uploader("📂 Upload CSV with Player Match Stats", type="csv", key="osis_upload")
 
@@ -512,13 +388,13 @@ elif selected_feature == "Opponent-Specific Impact Score":
         df = pd.read_csv(osis_file)
 
         required_columns = [
-            "Player", "Primary Role", "Opponent", "Runs", "Balls_Faced",
-            "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Player", "Primary Role", "Opponent", "Format",
+            "Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded",
             "Catches", "Run_Outs", "Stumpings"
         ]
 
         if all(col in df.columns for col in required_columns):
-            st.success("✅ File loaded with all required columns.")
+            st.success("✅ File loaded with all required columns (including Format).")
 
             # -------------------- Impact Calculation Functions --------------------
             def batting_impact(runs, balls):
@@ -531,7 +407,6 @@ elif selected_feature == "Opponent-Specific Impact Score":
                 if pd.isna(overs) or overs == 0:
                     return 0.0
                 economy = runs_conceded / overs
-                # Reward wickets heavily; reward economy below 6; penalize above 6
                 return (wickets * 20 * 0.7) + ((6 - economy) * 10 * 0.3)
 
             def fielding_impact(catches, run_outs, stumpings):
@@ -554,9 +429,8 @@ elif selected_feature == "Opponent-Specific Impact Score":
                 elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
                     bat = batting_impact(runs, balls)
                     wk_field = fielding_impact(catches, ro, stp)
-                    return bat + (wk_field * 0.5)  # partial weight for keeping
+                    return bat + (wk_field * 0.5)
                 else:
-                    # Fallback: batting only
                     return batting_impact(runs, balls)
 
             # Safety fill for numeric columns
@@ -566,32 +440,29 @@ elif selected_feature == "Opponent-Specific Impact Score":
             # Per-match impact
             df["Impact"] = df.apply(calculate_role_impact, axis=1)
 
-            # -------------------- OSIS Calculation (All Opponents) --------------------
-            # Overall average impact per player across all opponents
+            # -------------------- OSIS Calculation --------------------
             overall = (
-                df.groupby(["Player", "Primary Role"], as_index=False)["Impact"]
+                df.groupby(["Player", "Primary Role", "Format"], as_index=False)["Impact"]
                 .mean()
                 .rename(columns={"Impact": "Overall_Avg_Impact"})
             )
 
-            # Average impact per player vs each opponent
             vs_opp = (
-                df.groupby(["Player", "Primary Role", "Opponent"], as_index=False)["Impact"]
+                df.groupby(["Player", "Primary Role", "Opponent", "Format"], as_index=False)["Impact"]
                 .mean()
                 .rename(columns={"Impact": "Opponent_Avg_Impact"})
             )
 
-            # Merge and compute OSIS
-            osis_all = vs_opp.merge(overall, on=["Player", "Primary Role"], how="left")
+            osis_all = vs_opp.merge(overall, on=["Player", "Primary Role", "Format"], how="left")
             osis_all["OSIS"] = osis_all.apply(
                 lambda r: (r["Opponent_Avg_Impact"] / r["Overall_Avg_Impact"] * 100.0) if r["Overall_Avg_Impact"] not in [0, None] else 0.0,
                 axis=1
             )
 
-            # -------------------- Utility: Remarks per opponent (relative to that opponent's max) --------------------
+            # -------------------- Remarks per Opponent --------------------
             def add_remarks_per_opponent(osis_df):
                 out = []
-                for opp, sub in osis_df.groupby("Opponent"):
+                for (opp, fmt), sub in osis_df.groupby(["Opponent", "Format"]):
                     sub = sub.copy()
                     max_osis = sub["OSIS"].max() if len(sub) else 0
                     def remark(x):
@@ -611,8 +482,14 @@ elif selected_feature == "Opponent-Specific Impact Score":
 
             osis_all = add_remarks_per_opponent(osis_all)
 
+            # -------------------- Format Filter --------------------
+            format_list = sorted(osis_all["Format"].unique().tolist())
+            chosen_format = st.selectbox("📌 Select Format", format_list)
+
+            osis_all_fmt = osis_all[osis_all["Format"] == chosen_format]
+
             # -------------------- View Switcher --------------------
-            opponent_list = sorted(osis_all["Opponent"].unique().tolist())
+            opponent_list = sorted(osis_all_fmt["Opponent"].unique().tolist())
             view_choice = st.selectbox(
                 "🔎 View Mode",
                 ["All Opponents (Summary)"] + opponent_list,
@@ -621,33 +498,33 @@ elif selected_feature == "Opponent-Specific Impact Score":
 
             # -------------------- ALL OPPONENTS (SUMMARY) --------------------
             if view_choice == "All Opponents (Summary)":
-                st.subheader("🌐 Summary Across All Opponents")
+                st.subheader(f"🌐 Summary Across All Opponents — {chosen_format}")
 
-                # A) Heatmap: Players × Opponents OSIS
-                pivot_osis = osis_all.pivot_table(index="Player", columns="Opponent", values="OSIS", aggfunc="mean").fillna(0).round(2)
+                # Heatmap
+                pivot_osis = osis_all_fmt.pivot_table(index="Player", columns="Opponent", values="OSIS", aggfunc="mean").fillna(0).round(2)
                 st.markdown("**OSIS Heatmap (Players × Opponents)**")
                 import plotly.express as px
                 fig_heat = px.imshow(
                     pivot_osis,
                     labels=dict(x="Opponent", y="Player", color="OSIS"),
                     aspect="auto",
-                    title="OSIS Heatmap Across Opponents"
+                    title=f"OSIS Heatmap Across Opponents ({chosen_format})"
                 )
                 _dark_layout(fig_heat)
                 st.plotly_chart(fig_heat, use_container_width=True)
 
-                # B) Bar: Average OSIS per Opponent (how well our squad matches up vs each opponent)
-                avg_vs_opp = osis_all.groupby("Opponent", as_index=False)["OSIS"].mean().sort_values("OSIS", ascending=False)
+                # Average OSIS per Opponent
+                avg_vs_opp = osis_all_fmt.groupby("Opponent", as_index=False)["OSIS"].mean().sort_values("OSIS", ascending=False)
                 fig_avg = px.bar(
                     avg_vs_opp, x="Opponent", y="OSIS", text_auto=True,
-                    title="Average OSIS by Opponent (Team-wide)"
+                    title=f"Average OSIS by Opponent (Team-wide) — {chosen_format}"
                 )
                 _dark_layout(fig_avg, xlab="Opponent", ylab="Average OSIS")
                 st.plotly_chart(fig_avg, use_container_width=True)
 
-                # C) Per-Player Best/Worst Opponents
-                best = osis_all.loc[osis_all.groupby("Player")["OSIS"].idxmax()].rename(columns={"Opponent": "Best_Opponent", "OSIS": "Best_OSIS"})
-                worst = osis_all.loc[osis_all.groupby("Player")["OSIS"].idxmin()].rename(columns={"Opponent": "Worst_Opponent", "OSIS": "Worst_OSIS"})
+                # Best/Worst Opponent per Player
+                best = osis_all_fmt.loc[osis_all_fmt.groupby("Player")["OSIS"].idxmax()].rename(columns={"Opponent": "Best_Opponent", "OSIS": "Best_OSIS"})
+                worst = osis_all_fmt.loc[osis_all_fmt.groupby("Player")["OSIS"].idxmin()].rename(columns={"Opponent": "Worst_Opponent", "OSIS": "Worst_OSIS"})
                 bw = best[["Player", "Primary Role", "Best_Opponent", "Best_OSIS"]].merge(
                     worst[["Player", "Worst_Opponent", "Worst_OSIS"]],
                     on="Player", how="left"
@@ -655,24 +532,18 @@ elif selected_feature == "Opponent-Specific Impact Score":
                 st.markdown("**Best vs Worst Opponent per Player**")
                 st.dataframe(bw.reset_index(drop=True))
 
-                # D) Per-Opponent Leaders (Top 5)
-                st.markdown("**Top 5 Matchups per Opponent**")
+                # Top 5 per Opponent
+                st.markdown("**Top 10 Matchups per Opponent**")
                 for opp in opponent_list:
-                    sub = osis_all[osis_all["Opponent"] == opp].sort_values("OSIS", ascending=False).head(5)
-                    st.markdown(f"**🏟️ {opp} — Top 5**")
+                    sub = osis_all_fmt[osis_all_fmt["Opponent"] == opp].sort_values("OSIS", ascending=False).head(5)
+                    st.markdown(f"**🏟️ {opp} — Top 10**")
                     st.dataframe(sub[["Player", "Primary Role", "Opponent_Avg_Impact", "Overall_Avg_Impact", "OSIS", "Remarks"]].reset_index(drop=True))
 
                 # Downloads
                 st.download_button(
-                    "⬇ Download Full OSIS (All Opponents)",
-                    data=osis_all.to_csv(index=False).encode("utf-8"),
-                    file_name="osis_all_opponents.csv",
-                    mime="text/csv"
-                )
-                st.download_button(
-                    "⬇ Download OSIS Heatmap (table form)",
-                    data=pivot_osis.to_csv().encode("utf-8"),
-                    file_name="osis_heatmap_table.csv",
+                    f"⬇ Download Full OSIS ({chosen_format})",
+                    data=osis_all_fmt.to_csv(index=False).encode("utf-8"),
+                    file_name=f"osis_all_opponents_{chosen_format}.csv",
                     mime="text/csv"
                 )
 
@@ -681,24 +552,23 @@ elif selected_feature == "Opponent-Specific Impact Score":
                 top_opp = avg_vs_opp.iloc[0]
                 low_opp = avg_vs_opp.iloc[-1]
                 st.info(
-                    f"✅ **Best team-wide matchup:** **{top_opp['Opponent']}** (avg OSIS `{top_opp['OSIS']:.2f}`)\n\n"
-                    f"⚠️ **Most challenging opponent:** **{low_opp['Opponent']}** (avg OSIS `{low_opp['OSIS']:.2f}`)."
+                    f"✅ **Best team-wide matchup in {chosen_format}:** **{top_opp['Opponent']}** (avg OSIS `{top_opp['OSIS']:.2f}`)\n\n"
+                    f"⚠️ **Most challenging opponent in {chosen_format}:** **{low_opp['Opponent']}** (avg OSIS `{low_opp['OSIS']:.2f}`)."
                 )
-                st.markdown("Use the deep-dive view below to explore who drives these results for a specific opponent.")
 
             # -------------------- SINGLE OPPONENT (DEEP-DIVE) --------------------
             else:
                 selected_opponent = view_choice
-                st.subheader(f"🧭 Deep-Dive: OSIS vs **{selected_opponent}**")
+                st.subheader(f"🧭 Deep-Dive: OSIS vs **{selected_opponent}** — {chosen_format}")
 
                 osis_df = (
-                    osis_all[osis_all["Opponent"] == selected_opponent]
+                    osis_all_fmt[osis_all_fmt["Opponent"] == selected_opponent]
                     .copy()
                     .sort_values("OSIS", ascending=False)
                     .reset_index(drop=True)
                 )
 
-                # Recompute remarks with the current opponent's scale
+                # Recompute remarks
                 max_osis = osis_df["OSIS"].max() if len(osis_df) else 0
                 def get_remark(osis_score, max_):
                     if osis_score == max_:
@@ -714,28 +584,27 @@ elif selected_feature == "Opponent-Specific Impact Score":
                 osis_df["Remarks"] = osis_df["OSIS"].apply(lambda x: get_remark(x, max_osis))
 
                 # 📋 OSIS Report
-                st.markdown(f"### 📋 OSIS Report vs {selected_opponent}")
+                st.markdown(f"### 📋 OSIS Report vs {selected_opponent} — {chosen_format}")
                 st.dataframe(osis_df[["Player", "Primary Role", "Overall_Avg_Impact", "Opponent_Avg_Impact", "OSIS", "Remarks"]])
 
                 # ⬇ CSV Download
                 csv_data = osis_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    "⬇ Download OSIS Report CSV",
+                    f"⬇ Download OSIS Report CSV ({chosen_format})",
                     data=csv_data,
-                    file_name=f"osis_report_vs_{selected_opponent}.csv",
+                    file_name=f"osis_report_vs_{selected_opponent}_{chosen_format}.csv",
                     mime="text/csv"
                 )
 
                 # 📊 Bar Chart
-                import plotly.express as px
                 bar_fig = px.bar(
                     osis_df, x="Player", y="OSIS", color="Remarks", text_auto=True,
-                    title=f"OSIS vs {selected_opponent}"
+                    title=f"OSIS vs {selected_opponent} — {chosen_format}"
                 )
                 _dark_layout(bar_fig, xlab="Player", ylab="OSIS")
                 st.plotly_chart(bar_fig, use_container_width=True)
 
-                # 🐝 Beehive Plot (Impact spread vs opponent)
+                # 🐝 Beehive Plot
                 st.subheader("🐝 Beehive Plot (Impact vs Opponent)")
                 bee_plot = px.strip(
                     osis_df,
@@ -743,10 +612,9 @@ elif selected_feature == "Opponent-Specific Impact Score":
                     y="OSIS",
                     hover_data=["Player", "Remarks"],
                     color="Remarks",
-                    stripmode="overlay",
-                    title=f"Beehive Plot of OSIS vs {selected_opponent}"
+                    title=f"Beehive Plot of OSIS vs {selected_opponent} — {chosen_format}"
                 )
-                bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+                bee_plot.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
                 _dark_layout(bee_plot, xlab="Role", ylab="OSIS")
                 st.plotly_chart(bee_plot, use_container_width=True)
 
@@ -757,11 +625,11 @@ elif selected_feature == "Opponent-Specific Impact Score":
                     least_player = osis_df.iloc[-1]
                     st.success(
                         f"🏅 **Top Matchup Performer:** {top_player['Player']} ({top_player['Primary Role']}) "
-                        f"with an OSIS of `{top_player['OSIS']:.2f}` against **{selected_opponent}**."
+                        f"with an OSIS of `{top_player['OSIS']:.2f}` against **{selected_opponent}** in {chosen_format}."
                     )
                     st.error(
                         f"📉 **Weakest Matchup Performer:** {least_player['Player']} ({least_player['Primary Role']}) "
-                        f"with an OSIS of `{least_player['OSIS']:.2f}`."
+                        f"with an OSIS of `{least_player['OSIS']:.2f}` in {chosen_format}."
                     )
 
                     st.markdown("### 📝 Remarks Summary")
@@ -771,7 +639,7 @@ elif selected_feature == "Opponent-Specific Impact Score":
                 else:
                     st.info("No records found for this opponent.")
 
-            # --- Signature Footer ---
+            # --- Footer ---
             st.markdown("---")
             st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
 
@@ -792,11 +660,11 @@ elif selected_feature == "Opponent-Specific Impact Score":
     else:
         st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
 
-# ------------------ FORMAT ADAPTABILITY INDEX ------------------
-elif selected_feature == "Format Adaptability Index":
-    st.subheader("🔄 Format Adaptability Index (FAI) - Multi-Format Consistency")
+# ------------------ FORMAT SPECIALIZATION DILEMMA ------------------
+elif selected_feature == "Format Specialization Dilemma":
+    st.subheader("⚖️ Format Specialization Dilemma (FSD) - Cross-Format Consistency")
 
-    fai_file = st.file_uploader("📂 Upload CSV with Player Format Stats", type="csv", key="fai_upload")
+    fsd_file = st.file_uploader("📂 Upload CSV with Player Match Stats (by Format)", type="csv", key="fsd_upload")
 
     # ---------- Helpers ----------
     def _dark_layout(fig, title=None, xlab=None, ylab=None):
@@ -811,177 +679,278 @@ elif selected_feature == "Format Adaptability Index":
         )
         return fig
 
-    if fai_file:
-        df = pd.read_csv(fai_file)
+    if fsd_file:
+        df = pd.read_csv(fsd_file)
 
         required_columns = [
-            "Player", "Role", "Format", 
-            "Player_Avg", "Format_Avg"
+            "Player", "Primary Role", "Format", "Runs", "Balls_Faced",
+            "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Catches", "Run_Outs", "Stumpings"
         ]
 
         if all(col in df.columns for col in required_columns):
             st.success("✅ File loaded with all required columns.")
 
-            # -------------------- FAI Calculation --------------------
-            df["Normalised_Performance"] = df["Player_Avg"] / df["Format_Avg"]
+            # -------------------- Impact Calculation Functions --------------------
+            def batting_impact(runs, balls, fmt):
+                if pd.isna(balls) or balls == 0:
+                    return 0.0
+                strike_rate = (runs / balls) * 100.0
+                if fmt == "Test":
+                    return (runs * 0.7) + (strike_rate * 0.3)
+                elif fmt == "ODI":
+                    return (runs * 0.6) + (strike_rate * 0.4)
+                else:  # T20
+                    return (runs * 0.4) + (strike_rate * 0.6)
 
-            summary = (
-                df.groupby(["Player", "Role"], as_index=False)
-                .agg(
-                    Mean_Norm=("Normalised_Performance", "mean"),
-                    Std_Norm=("Normalised_Performance", "std")
-                )
-            )
-            summary["Std_Norm"] = summary["Std_Norm"].fillna(0)
-            summary["CoV"] = summary.apply(
-                lambda r: (r["Std_Norm"] / r["Mean_Norm"]) if r["Mean_Norm"] != 0 else 0,
-                axis=1
-            )
-            summary["FAI"] = 100 - (summary["CoV"] * 100)
+            def bowling_impact(wickets, overs, runs_conceded, fmt):
+                if pd.isna(overs) or overs == 0:
+                    return 0.0
+                economy = runs_conceded / overs
+                if fmt == "Test":
+                    return (wickets * 20 * 0.6) + ((6 - economy) * 10 * 0.4)
+                elif fmt == "ODI":
+                    return (wickets * 20 * 0.65) + ((6 - economy) * 10 * 0.35)
+                else:  # T20
+                    return (wickets * 20 * 0.5) + ((6 - economy) * 10 * 0.5)
 
-            df = df.merge(summary[["Player", "FAI"]], on="Player", how="left")
-
-            def remark(fai):
-                if fai >= 90:
-                    return "🏆 Highly Adaptable"
-                elif fai >= 75:
-                    return "🔥 Strongly Consistent"
-                elif fai >= 60:
-                    return "✅ Solid"
-                elif fai >= 40:
-                    return "⚠️ Format Dependent"
+            def fielding_impact(catches, run_outs, stumpings, fmt):
+                base = (catches * 10) + (run_outs * 12) + (stumpings * 15)
+                if fmt == "Test":
+                    return base * 0.5
+                elif fmt == "ODI":
+                    return base * 0.8
                 else:
-                    return "🔻 Struggles Across Formats"
-            summary["Remarks"] = summary["FAI"].apply(remark)
+                    return base * 1.0
+
+            def calculate_role_impact(row):
+                role = str(row["Primary Role"]).strip().lower()
+                fmt = row["Format"]
+                runs = row["Runs"]; balls = row["Balls_Faced"]
+                wkts = row["Wickets"]; overs = row["Overs_Bowled"]; rc = row["Runs_Conceded"]
+                catches = row["Catches"]; ro = row["Run_Outs"]; stp = row["Stumpings"]
+
+                if role == "batter":
+                    return batting_impact(runs, balls, fmt)
+                elif role == "bowler":
+                    return bowling_impact(wkts, overs, rc, fmt)
+                elif role == "all-rounder":
+                    bat = batting_impact(runs, balls, fmt)
+                    bowl = bowling_impact(wkts, overs, rc, fmt)
+                    # workload share
+                    bat_share = balls / (balls + overs * 6 + 1e-6)
+                    bowl_share = 1 - bat_share
+                    return (bat * bat_share) + (bowl * bowl_share)
+                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
+                    bat = batting_impact(runs, balls, fmt)
+                    wk_field = fielding_impact(catches, ro, stp, fmt)
+                    return bat + (wk_field * 0.5)
+                else:
+                    return batting_impact(runs, balls, fmt)
+
+            # Safety fill for numeric columns
+            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
+            df[num_cols] = df[num_cols].fillna(0)
+
+            # Per-match impact
+            df["Impact"] = df.apply(calculate_role_impact, axis=1)
+
+            # -------------------- FSD Calculation --------------------
+            overall = (
+                df.groupby(["Player", "Primary Role"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Overall_Avg_Impact"})
+            )
+
+            vs_format = (
+                df.groupby(["Player", "Primary Role", "Format"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Format_Avg_Impact"})
+            )
+
+            fsd_all = vs_format.merge(overall, on=["Player", "Primary Role"], how="left")
+
+            def compute_fsd(row):
+                if row["Overall_Avg_Impact"] <= 20:  # threshold
+                    return 0.0
+                if row["Overall_Avg_Impact"] in [0, None]:
+                    return 0.0
+                return (row["Format_Avg_Impact"] / row["Overall_Avg_Impact"] * 100.0)
+
+            fsd_all["FSD"] = fsd_all.apply(compute_fsd, axis=1)
+
+            # -------------------- Remarks per Format --------------------
+            def add_remarks_per_format(fsd_df):
+                out = []
+                for fmt, sub in fsd_df.groupby("Format"):
+                    sub = sub.copy()
+                    max_fsd = sub["FSD"].max() if len(sub) else 0
+
+                    def remark(x):
+                        if x >= 120 and x == max_fsd:
+                            return "🏆 Format Specialist"
+                        elif x >= 100:
+                            return "🔥 Strong"
+                        elif x >= 80:
+                            return "✅ Balanced"
+                        elif x >= 60:
+                            return "⚠️ Average"
+                        else:
+                            return "🔻 Weak"
+
+                    sub["Remarks"] = sub["FSD"].apply(remark)
+                    out.append(sub)
+                return pd.concat(out, ignore_index=True) if out else fsd_df
+
+            fsd_all = add_remarks_per_format(fsd_all)
 
             # -------------------- View Switcher --------------------
-            format_list = sorted(df["Format"].unique().tolist())
+            format_list = sorted(fsd_all["Format"].unique().tolist())
             view_choice = st.selectbox(
                 "🔎 View Mode",
                 ["All Formats (Summary)"] + format_list,
-                help="Choose 'All Formats' for overview or pick a specific format for deep-dive."
+                help="Choose 'All Formats' for an overview or pick a format for a deep-dive."
             )
 
             # -------------------- ALL FORMATS (SUMMARY) --------------------
             if view_choice == "All Formats (Summary)":
                 st.subheader("🌐 Summary Across All Formats")
 
-                # Heatmap: Players × Formats (Normalised Performance)
-                pivot_fai = df.pivot_table(index="Player", columns="Format", values="Normalised_Performance", aggfunc="mean").fillna(0).round(2)
-                st.markdown("**FAI Heatmap (Players × Formats)**")
+                # Heatmap
+                pivot_fsd = fsd_all.pivot_table(index="Player", columns="Format", values="FSD", aggfunc="mean").fillna(0).round(2)
+                st.markdown("**FSD Heatmap (Players × Formats)**")
                 import plotly.express as px
                 fig_heat = px.imshow(
-                    pivot_fai,
-                    labels=dict(x="Format", y="Player", color="Norm Perf"),
+                    pivot_fsd,
+                    labels=dict(x="Format", y="Player", color="FSD"),
                     aspect="auto",
-                    title="Normalised Performance Heatmap Across Formats"
+                    title="FSD Heatmap Across Formats"
                 )
                 _dark_layout(fig_heat)
                 st.plotly_chart(fig_heat, use_container_width=True)
 
-                # Bar chart: FAI
-                fig_fai = px.bar(
-                    summary.sort_values("FAI", ascending=False),
-                    x="Player", y="FAI", color="Remarks", text_auto=".2f",
-                    title="Format Adaptability Index (FAI) - All Players"
+                # Average FSD per Format
+                avg_vs_fmt = fsd_all.groupby("Format", as_index=False)["FSD"].mean().sort_values("FSD", ascending=False)
+                fig_avg = px.bar(
+                    avg_vs_fmt, x="Format", y="FSD", text_auto=True,
+                    title="Average FSD by Format (Team-wide)"
                 )
-                _dark_layout(fig_fai, xlab="Player", ylab="FAI")
-                st.plotly_chart(fig_fai, use_container_width=True)
+                _dark_layout(fig_avg, xlab="Format", ylab="Average FSD")
+                st.plotly_chart(fig_avg, use_container_width=True)
 
-                # Best/Worst Formats per Player
-                best_fmt = df.loc[df.groupby("Player")["Normalised_Performance"].idxmax()].rename(columns={"Format": "Best_Format", "Normalised_Performance": "Best_NormPerf"})
-                worst_fmt = df.loc[df.groupby("Player")["Normalised_Performance"].idxmin()].rename(columns={"Format": "Worst_Format", "Normalised_Performance": "Worst_NormPerf"})
-                bw = best_fmt[["Player", "Role", "Best_Format", "Best_NormPerf"]].merge(
-                    worst_fmt[["Player", "Worst_Format", "Worst_NormPerf"]],
+                # Best/Worst Format per Player
+                best = fsd_all.loc[fsd_all.groupby("Player")["FSD"].idxmax()].rename(columns={"Format": "Best_Format", "FSD": "Best_FSD"})
+                worst = fsd_all.loc[fsd_all.groupby("Player")["FSD"].idxmin()].rename(columns={"Format": "Worst_Format", "FSD": "Worst_FSD"})
+                bw = best[["Player", "Primary Role", "Best_Format", "Best_FSD"]].merge(
+                    worst[["Player", "Worst_Format", "Worst_FSD"]],
                     on="Player", how="left"
-                ).sort_values(["Role", "Player"])
+                ).sort_values(["Primary Role", "Player"])
                 st.markdown("**Best vs Worst Format per Player**")
                 st.dataframe(bw.reset_index(drop=True))
 
+                # Top 5 per Format
+                st.markdown("**Top 5 Performers per Format**")
+                for fmt in format_list:
+                    sub = fsd_all[fsd_all["Format"] == fmt].sort_values("FSD", ascending=False).head(5)
+                    st.markdown(f"**🏏 {fmt} — Top 5**")
+                    st.dataframe(sub[["Player", "Primary Role", "Format_Avg_Impact", "Overall_Avg_Impact", "FSD", "Remarks"]].reset_index(drop=True))
+
                 # Downloads
                 st.download_button(
-                    "⬇ Download Full FAI Summary",
-                    data=summary.to_csv(index=False).encode("utf-8"),
-                    file_name="fai_summary.csv",
+                    "⬇ Download Full FSD (All Formats)",
+                    data=fsd_all.to_csv(index=False).encode("utf-8"),
+                    file_name="fsd_all_formats.csv",
                     mime="text/csv"
                 )
                 st.download_button(
-                    "⬇ Download FAI Heatmap (table form)",
-                    data=pivot_fai.to_csv().encode("utf-8"),
-                    file_name="fai_heatmap_table.csv",
+                    "⬇ Download FSD Heatmap (table form)",
+                    data=pivot_fsd.to_csv().encode("utf-8"),
+                    file_name="fsd_heatmap_table.csv",
                     mime="text/csv"
                 )
 
                 # Insights
-                top_player = summary.iloc[0]
-                low_player = summary.iloc[-1]
+                st.subheader("🔍 Summary Insights")
+                top_fmt = avg_vs_fmt.iloc[0]
+                low_fmt = avg_vs_fmt.iloc[-1]
                 st.info(
-                    f"🏅 **Most Adaptable Player:** {top_player['Player']} ({top_player['FAI']:.2f})\n\n"
-                    f"📉 **Least Adaptable Player:** {low_player['Player']} ({low_player['FAI']:.2f})"
+                    f"✅ **Best format for team-wide impact:** **{top_fmt['Format']}** (avg FSD `{top_fmt['FSD']:.2f}`)\n\n"
+                    f"⚠️ **Most challenging format:** **{low_fmt['Format']}** (avg FSD `{low_fmt['FSD']:.2f}`)."
                 )
 
             # -------------------- SINGLE FORMAT (DEEP-DIVE) --------------------
             else:
                 selected_format = view_choice
-                st.subheader(f"🧭 Deep-Dive: {selected_format}")
+                st.subheader(f"🧭 Deep-Dive: FSD in **{selected_format}**")
 
-                fmt_df = df[df["Format"] == selected_format].copy()
-                fmt_df = fmt_df.sort_values("Normalised_Performance", ascending=False).reset_index(drop=True)
-
-                max_perf = fmt_df["Normalised_Performance"].max() if len(fmt_df) else 0
-                def get_remark(val, max_):
-                    if val == max_:
-                        return "🏆 Best in Format"
-                    elif val >= 0.8 * max_:
-                        return "🔥 Strong"
-                    elif val >= 0.6 * max_:
-                        return "✅ Solid"
-                    elif val >= 0.4 * max_:
-                        return "⚠️ Below Avg"
-                    else:
-                        return "🔻 Struggles"
-                fmt_df["Remarks"] = fmt_df["Normalised_Performance"].apply(lambda x: get_remark(x, max_perf))
-
-                # Table
-                st.dataframe(fmt_df[["Player", "Role", "Player_Avg", "Format_Avg", "Normalised_Performance", "FAI", "Remarks"]])
-
-                # Bar Chart
-                import plotly.express as px
-                bar_fig = px.bar(
-                    fmt_df, x="Player", y="Normalised_Performance", color="Remarks", text_auto=".2f",
-                    title=f"Normalised Performance in {selected_format}"
+                fsd_df = (
+                    fsd_all[fsd_all["Format"] == selected_format]
+                    .copy()
+                    .sort_values("FSD", ascending=False)
+                    .reset_index(drop=True)
                 )
-                _dark_layout(bar_fig, xlab="Player", ylab="Normalised Performance")
-                st.plotly_chart(bar_fig, use_container_width=True)
 
-                # Downloads
+                # 📋 FSD Report
+                st.markdown(f"### 📋 FSD Report in {selected_format}")
+                st.dataframe(fsd_df[["Player", "Primary Role", "Overall_Avg_Impact", "Format_Avg_Impact", "FSD", "Remarks"]])
+
+                # ⬇ CSV Download
+                csv_data = fsd_df.to_csv(index=False).encode("utf-8")
                 st.download_button(
-                    f"⬇ Download {selected_format} Data",
-                    data=fmt_df.to_csv(index=False).encode("utf-8"),
-                    file_name=f"fai_{selected_format}.csv",
+                    "⬇ Download FSD Report CSV",
+                    data=csv_data,
+                    file_name=f"fsd_report_in_{selected_format}.csv",
                     mime="text/csv"
                 )
 
-                # Conclusion
-                if len(fmt_df) > 0:
-                    top_player = fmt_df.iloc[0]
-                    low_player = fmt_df.iloc[-1]
+                # 📊 Bar Chart
+                bar_fig = px.bar(
+                    fsd_df, x="Player", y="FSD", color="Remarks", text_auto=True,
+                    title=f"FSD in {selected_format}"
+                )
+                _dark_layout(bar_fig, xlab="Player", ylab="FSD")
+                st.plotly_chart(bar_fig, use_container_width=True)
+
+                # 🐝 Beehive Plot
+                st.subheader("🐝 Beehive Plot (Impact in Format)")
+                bee_plot = px.strip(
+                    fsd_df,
+                    x="Primary Role",
+                    y="FSD",
+                    hover_data=["Player", "Remarks"],
+                    color="Remarks",
+                    stripmode="overlay",
+                    title=f"Beehive Plot of FSD in {selected_format}"
+                )
+                bee_plot.update_traces(jitter=0.35, marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+                _dark_layout(bee_plot, xlab="Role", ylab="FSD")
+                st.plotly_chart(bee_plot, use_container_width=True)
+
+                # 🔍 Conclusion
+                st.subheader("🔍 Conclusion & Insights")
+                if len(fsd_df) > 0:
+                    top_player = fsd_df.iloc[0]
+                    least_player = fsd_df.iloc[-1]
                     st.success(
-                        f"🏅 **Top Performer:** {top_player['Player']} ({top_player['Role']}) "
-                        f"with Norm Perf `{top_player['Normalised_Performance']:.2f}` in {selected_format}."
+                        f"🏅 **Top Format Specialist:** {top_player['Player']} ({top_player['Primary Role']}) "
+                        f"with an FSD of `{top_player['FSD']:.2f}` in **{selected_format}**."
                     )
                     st.error(
-                        f"📉 **Lowest Performer:** {low_player['Player']} ({low_player['Role']}) "
-                        f"with Norm Perf `{low_player['Normalised_Performance']:.2f}`."
+                        f"📉 **Weakest Performer in {selected_format}:** {least_player['Player']} ({least_player['Primary Role']}) "
+                        f"with an FSD of `{least_player['FSD']:.2f}`."
                     )
-                    remark_counts = fmt_df["Remarks"].value_counts().to_dict()
-                    st.markdown("### 📝 Remarks Summary")
-                    for r, c in remark_counts.items():
-                        st.markdown(f"- **{r}**: {c} player(s)")
 
-            # Footer
+                    st.markdown("### 📝 Remarks Summary")
+                    summary_counts = fsd_df["Remarks"].value_counts().to_dict()
+                    for remark, count in summary_counts.items():
+                        st.markdown(f"- **{remark}**: {count} player(s)")
+                else:
+                    st.info("No records found for this format.")
+
+            # --- Footer ---
             st.markdown("---")
             st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
             st.markdown(
                 """
                 <hr style="margin-top: 50px;"/>
@@ -997,216 +966,482 @@ elif selected_feature == "Format Adaptability Index":
             st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
 
     else:
-        st.info("📁 Please upload a CSV file to proceed with FAI calculation.")
+        st.info("📁 Please upload a CSV file to proceed with FSD calculation.")
 
+# ------------------ UNSTABLE PERFORMANCE ISSUE ------------------
+elif selected_feature == "Unstable Performance Issue":
+    st.subheader("🌪️ Unstable Performance Issue (UPI) - Variability & Consistency Analysis Across Formats")
 
-# ------------------------- Pitch Adaptive XI Selector ----------------------
-elif selected_feature == "Pitch Adaptive XI Selector":
-    st.subheader("🏟️ Pitch Adaptive XI Selector")
+    upi_file = st.file_uploader("📂 Upload CSV with Player Match-by-Match Stats (Multi-Format Supported)", type="csv", key="upi_upload")
 
-    uploaded_adaptive_file = st.file_uploader("📁 Upload Final XI CSV", type="csv", key="pitch_adaptive_upload")
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
 
-    if uploaded_adaptive_file:
-        df = pd.read_csv(uploaded_adaptive_file)
+    if upi_file:
+        df = pd.read_csv(upi_file)
 
         required_columns = [
-            "Player Name", "Role", "Format", "Batting Avg", "Batting SR",
-            "Bowling Econ", "Bowling Avg", "Batting Rating", "Bowling Rating",
-            "All-Round Rating"
+            "Player", "Primary Role", "Format", "Runs", "Balls_Faced",
+            "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Catches", "Run_Outs", "Stumpings"
         ]
-        for col in required_columns:
-            if col not in df.columns:
-                df[col] = None
 
-        if all(col in df.columns for col in ["Player Name", "Role", "Format"]):
-            # --- Venue and Pitch Setup ---
-            all_venues = {
-                "Wankhede Stadium": "Red Soil", "Brabourne Stadium": "Red Soil", "MA Chidambaram Stadium": "Red Soil",
-                "M. Chinnaswamy Stadium": "Red Soil", "Sawai Mansingh Stadium": "Red Soil", "Eden Gardens": "Red Soil",
-                "Narendra Modi Stadium": "Black Soil", "Ekana Stadium": "Black Soil", "Arun Jaitley Stadium": "Black Soil",
-                "Rajiv Gandhi Intl Stadium": "Black Soil", "Barsapara Stadium": "Black Soil", "Holkar Stadium": "Black Soil"
-            }
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns.")
 
-            venue_thresholds = {
-                "Wankhede Stadium": {"bat_avg": 32, "bat_sr": 140, "bat_rating": 6.5, "bowl_avg": 28, "bowl_econ": 8.0},
-                "Brabourne Stadium": {"bat_avg": 30, "bat_sr": 135, "bat_rating": 6.3, "bowl_avg": 26, "bowl_econ": 7.6},
-                "MA Chidambaram Stadium": {"bat_avg": 30, "bat_sr": 125, "bat_rating": 6.0, "bowl_avg": 24, "bowl_econ": 6.8},
-                "M. Chinnaswamy Stadium": {"bat_avg": 35, "bat_sr": 145, "bat_rating": 7.0, "bowl_avg": 32, "bowl_econ": 9.0},
-                "Sawai Mansingh Stadium": {"bat_avg": 31, "bat_sr": 132, "bat_rating": 6.2, "bowl_avg": 27, "bowl_econ": 7.4},
-                "Narendra Modi Stadium": {"bat_avg": 28, "bat_sr": 130, "bat_rating": 6.3, "bowl_avg": 25, "bowl_econ": 7.5},
-                "Ekana Stadium": {"bat_avg": 26, "bat_sr": 122, "bat_rating": 5.8, "bowl_avg": 22, "bowl_econ": 6.5},
-                "Arun Jaitley Stadium": {"bat_avg": 29, "bat_sr": 128, "bat_rating": 6.1, "bowl_avg": 23, "bowl_econ": 6.9},
-                "Rajiv Gandhi Intl Stadium": {"bat_avg": 30, "bat_sr": 130, "bat_rating": 6.2, "bowl_avg": 24, "bowl_econ": 7.0},
-                "Barsapara Stadium": {"bat_avg": 31, "bat_sr": 134, "bat_rating": 6.4, "bowl_avg": 25, "bowl_econ": 7.2},
-                "Holkar Stadium": {"bat_avg": 33, "bat_sr": 138, "bat_rating": 6.7, "bowl_avg": 26, "bowl_econ": 7.8},
-                "Eden Gardens": {"bat_avg": 32, "bat_sr": 135, "bat_rating": 6.5, "bowl_avg": 27, "bowl_econ": 7.6},
-            }
+            # -------------------- Match Metric Functions --------------------
+            def batting_metric(runs, balls):
+                if pd.isna(balls) or balls == 0:
+                    return 0.0
+                strike_rate = (runs / balls) * 100
+                return runs * 0.6 + strike_rate * 0.4
 
-            selected_venue = st.selectbox("📍 Select Match Venue", list(all_venues.keys()))
-            pitch_type = all_venues[selected_venue]
-            match_time = st.selectbox("🕐 Match Time", ["Day", "Night"])
+            def bowling_metric(wkts, overs, runs_conceded):
+                if pd.isna(overs) or overs == 0:
+                    return 0.0
+                econ = runs_conceded / overs
+                return (wkts * 20) - (econ * 2)
 
-            st.markdown(f"🧱 **Pitch Type:** `{pitch_type}`")
-            st.markdown(f"🕐 **Match Time:** `{match_time}`")
+            def fielding_metric(catches, run_outs, stumpings):
+                return (catches * 8) + (run_outs * 10) + (stumpings * 12)
 
-            def recommend_toss_decision(pitch_type, match_time):
-                if pitch_type == "Red Soil" and match_time == "Day":
-                    return "Bat", "Red soil crumbles and deteriorates more in day games..."
-                elif pitch_type == "Red Soil" and match_time == "Night":
-                    return "Field", "At night, batting becomes easier early on..."
-                elif pitch_type == "Black Soil" and match_time == "Day":
-                    return "Field", "Black soil holds moisture longer but slows down..."
-                elif pitch_type == "Black Soil" and match_time == "Night":
-                    return "Field", "Dew at night reduces spin and helps the ball skid..."
+            def calculate_metric(row):
+                role = str(row["Primary Role"]).strip().lower()
+                bat = batting_metric(row["Runs"], row["Balls_Faced"])
+                bowl = bowling_metric(row["Wickets"], row["Overs_Bowled"], row["Runs_Conceded"])
+                fld = fielding_metric(row["Catches"], row["Run_Outs"], row["Stumpings"])
 
-            suggested_toss, toss_reason = recommend_toss_decision(pitch_type, match_time)
-            st.markdown(f"🧽 **Toss Recommendation:** The captain should **opt to `{suggested_toss}` first**.")
-            st.info(f"📌 **Reason:** {toss_reason}")
+                if role == "batter":
+                    return bat
+                elif role == "bowler":
+                    return bowl
+                elif role == "all-rounder":
+                    return (bat + bowl) / 2.0
+                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
+                    return bat + (fld * 0.5)
+                else:
+                    return bat  # default fallback
 
-            def classify_player(row, ptype=None, mtime=None):
-                role = row["Role"].lower()
-                ptype = ptype or pitch_type
-                mtime = mtime or match_time
+            # Fill missing numeric values
+            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
+            df[num_cols] = df[num_cols].fillna(0)
 
-                if ptype == "Red Soil" and mtime == "Day":
-                    if any(x in role for x in ["spinner", "spin all-rounder", "anchor"]):
-                        return "✅ Strong"
-                    elif any(x in role for x in ["opener", "floater"]):
-                        return "⚠️ Moderate"
+            df["Match_Metric"] = df.apply(calculate_metric, axis=1)
+
+            # -------------------- UPI Calculation --------------------
+            import numpy as np
+
+            def instability_measures(sub):
+                values = sub["Match_Metric"].tolist()
+                if len(values) < 2:
+                    return pd.Series({
+                        "Mean": np.mean(values),
+                        "SD": 0,
+                        "CV": 0,
+                        "FailureRate": 0,
+                        "AvgMovingRange": 0,
+                        "UPI": 0
+                    })
+
+                mean_val = np.mean(values)
+                sd_val = np.std(values, ddof=1)
+                cv_val = sd_val / mean_val if mean_val != 0 else 0
+                failures = sum(1 for v in values if v < 10) / len(values) * 100
+                mr = np.mean([abs(values[i] - values[i-1]) for i in range(1, len(values))])
+                upi_score = (cv_val * 50) + (failures * 0.3) + (mr * 0.2)
+
+                return pd.Series({
+                    "Mean": mean_val,
+                    "SD": sd_val,
+                    "CV": cv_val,
+                    "FailureRate": failures,
+                    "AvgMovingRange": mr,
+                    "UPI": upi_score
+                })
+
+            # 🔑 Now group by Format also
+            upi_all = df.groupby(["Player", "Primary Role", "Format"]).apply(instability_measures).reset_index()
+
+            # -------------------- Remarks --------------------
+            def add_remarks(upi_df):
+                max_upi = upi_df["UPI"].max() if len(upi_df) else 0
+                def remark(x):
+                    if x == 0:
+                        return "✅ Stable (No Variability)"
+                    elif x <= 0.3 * max_upi:
+                        return "✅ Stable"
+                    elif x <= 0.6 * max_upi:
+                        return "⚠️ Moderate Instability"
+                    elif x <= 0.8 * max_upi:
+                        return "🔥 High Instability"
                     else:
-                        return "❌ Not Ideal"
-                elif ptype == "Red Soil" and mtime == "Night":
-                    if any(x in role for x in ["fast", "death", "finisher", "seamer", "floater"]):
-                        return "✅ Strong"
-                    elif any(x in role for x in ["opener", "spinner", "spin all-rounder"]):
-                        return "⚠️ Moderate"
-                    else:
-                        return "❌ Not Ideal"
-                elif ptype == "Black Soil" and mtime == "Day":
-                    if any(x in role for x in ["fast", "seamer", "anchor", "pace-all-rounder"]):
-                        return "✅ Strong"
-                    elif any(x in role for x in ["spinner", "opener"]):
-                        return "⚠️ Moderate"
-                    else:
-                        return "❌ Not Ideal"
-                elif ptype == "Black Soil" and mtime == "Night":
-                    if any(x in role for x in ["fast", "death", "finisher", "opener"]):
-                        return "✅ Strong"
-                    elif any(x in role for x in ["spinner", "floater"]):
-                        return "⚠️ Moderate"
-                    else:
-                        return "❌ Not Ideal"
+                        return "🌪️ Very Unstable"
+                upi_df["Remarks"] = upi_df["UPI"].apply(remark)
+                return upi_df
 
-            df["Pitch Adaptiveness"] = df.apply(lambda row: classify_player(row), axis=1)
+            upi_all = add_remarks(upi_all)
 
-            role_priority = {
-                "opener": 0, "anchor": 0, "floater": 0, "finisher": 0,
-                "spinner": 1, "fast": 1, "seamer": 1, "death": 1,
-                "spin all-rounder": 2, "pace-all-rounder": 2, "all-rounder": 2,
-            }
-
-            def get_sort_priority(role):
-                for keyword, priority in role_priority.items():
-                    if keyword in role.lower():
-                        return priority
-                return 3
-
-            df["Sort Priority"] = df["Role"].apply(get_sort_priority)
-            df = df.sort_values(by="Sort Priority").drop(columns=["Sort Priority"])
-
-            st.subheader("📋 Adaptive Classification")
-            st.dataframe(df)
+            # -------------------- View Mode --------------------
+            view_choice = st.selectbox(
+                "🔎 View Mode",
+                ["Summary View", "Format-wise Deep-Dive", "Player-wise Deep-Dive"],
+                help="Choose 'Summary' for overview, 'Format-wise' for breakdown, or 'Player-wise' for individual analysis."
+            )
 
             import plotly.express as px
-            st.subheader("🐝 Beehive View of Player Adaptiveness")
-            
-            beehive = px.strip(
-                df,
-                x="Role",
-                y="Pitch Adaptiveness",
-                color="Format",
-                hover_data=["Player Name"],
-                stripmode="overlay",
-                title="Beehive Plot of Player Roles and Adaptiveness"
+            import plotly.graph_objects as go
+
+            if view_choice == "Summary View":
+                st.subheader("🌐 Summary of Instability (UPI)")
+
+                # Average UPI per Role × Format
+                avg_upi = upi_all.groupby(["Primary Role", "Format"], as_index=False)["UPI"].mean().sort_values("UPI", ascending=False)
+                fig_avg = px.bar(
+                    avg_upi, x="Primary Role", y="UPI", color="Format", barmode="group",
+                    title="Average UPI by Role and Format", text_auto=True
+                )
+                _dark_layout(fig_avg, xlab="Role", ylab="Average UPI")
+                st.plotly_chart(fig_avg, use_container_width=True)
+
+                # 🐝 Beehive Plot Replacement (simulate jitter with scatter)
+                import numpy as np
+                jittered = upi_all.copy()
+                jittered["jitter_x"] = jittered["Primary Role"].apply(lambda r: list(upi_all["Primary Role"].unique()).index(r))
+                jittered["jitter_x"] = jittered["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered))
+
+                fig_bee = px.scatter(
+                    jittered, x="jitter_x", y="UPI", color="Format",
+                    hover_data=["Player", "Primary Role", "Format"],
+                    title="Beehive Plot of UPI Distribution Across Roles & Formats"
+                )
+                fig_bee.update_xaxes(
+                    tickvals=list(range(len(upi_all["Primary Role"].unique()))),
+                    ticktext=upi_all["Primary Role"].unique()
+                )
+                _dark_layout(fig_bee, xlab="Role", ylab="UPI")
+                st.plotly_chart(fig_bee, use_container_width=True)
+
+                # Downloads
+                st.download_button(
+                    "⬇ Download Full UPI Report",
+                    data=upi_all.to_csv(index=False).encode("utf-8"),
+                    file_name="upi_all_players.csv",
+                    mime="text/csv"
+                )
+
+                # Insights
+                st.subheader("🔍 Summary Insights")
+                top_unstable = upi_all.loc[upi_all["UPI"].idxmax()]
+                low_unstable = upi_all.loc[upi_all["UPI"].idxmin()]
+                st.info(
+                    f"🌪️ **Most Unstable Player:** {top_unstable['Player']} ({top_unstable['Primary Role']} - {top_unstable['Format']}) "
+                    f"with UPI `{top_unstable['UPI']:.2f}`\n\n"
+                    f"✅ **Most Stable Player:** {low_unstable['Player']} ({low_unstable['Primary Role']} - {low_unstable['Format']}) "
+                    f"with UPI `{low_unstable['UPI']:.2f}`."
+                )
+
+            elif view_choice == "Format-wise Deep-Dive":
+                st.subheader("📊 Format-wise Instability Deep-Dive")
+                selected_format = st.selectbox("Select Format", sorted(upi_all["Format"].unique().tolist()))
+                format_df = upi_all[upi_all["Format"] == selected_format]
+
+                fig_box = px.box(format_df, x="Primary Role", y="UPI", color="Primary Role",
+                                 title=f"UPI Distribution by Role in {selected_format}")
+                _dark_layout(fig_box)
+                st.plotly_chart(fig_box, use_container_width=True)
+
+                # Beehive replacement
+                jittered_fmt = format_df.copy()
+                jittered_fmt["jitter_x"] = jittered_fmt["Primary Role"].apply(lambda r: list(format_df["Primary Role"].unique()).index(r))
+                jittered_fmt["jitter_x"] = jittered_fmt["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered_fmt))
+
+                fig_bee_fmt = px.scatter(
+                    jittered_fmt, x="jitter_x", y="UPI", color="Primary Role",
+                    hover_data=["Player", "Format"],
+                    title=f"Beehive Plot of UPI in {selected_format}"
+                )
+                fig_bee_fmt.update_xaxes(
+                    tickvals=list(range(len(format_df["Primary Role"].unique()))),
+                    ticktext=format_df["Primary Role"].unique()
+                )
+                _dark_layout(fig_bee_fmt, xlab="Role", ylab="UPI")
+                st.plotly_chart(fig_bee_fmt, use_container_width=True)
+
+                st.dataframe(format_df)
+
+            else:
+                st.subheader("🧭 Player-wise Deep-Dive on Instability")
+                selected_player = st.selectbox("Select Player", sorted(upi_all["Player"].unique().tolist()))
+                sub_df = df[df["Player"] == selected_player].reset_index(drop=True)
+
+                if len(sub_df) > 0:
+                    st.markdown(f"### 📋 Match-by-Match Metrics for {selected_player}")
+                    st.dataframe(sub_df[["Player", "Primary Role", "Format", "Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings", "Match_Metric"]])
+
+                    # Trend chart
+                    fig_line = go.Figure()
+                    for fmt in sub_df["Format"].unique():
+                        temp = sub_df[sub_df["Format"] == fmt]
+                        fig_line.add_trace(go.Scatter(
+                            y=temp["Match_Metric"],
+                            x=list(range(1, len(temp) + 1)),
+                            mode="lines+markers",
+                            name=f"{fmt}"
+                        ))
+                    _dark_layout(fig_line, xlab="Match #", ylab="Metric", title=f"Match-to-Match Instability for {selected_player}")
+                    st.plotly_chart(fig_line, use_container_width=True)
+
+                    # Beehive replacement
+                    jittered_player = sub_df.copy()
+                    jittered_player["jitter_x"] = jittered_player["Format"].apply(lambda f: list(sub_df["Format"].unique()).index(f))
+                    jittered_player["jitter_x"] = jittered_player["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered_player))
+
+                    fig_bee_player = px.scatter(
+                        jittered_player, x="jitter_x", y="Match_Metric", color="Format",
+                        hover_data=["Player", "Format"],
+                        title=f"Beehive Plot of Match Metrics for {selected_player}"
+                    )
+                    fig_bee_player.update_xaxes(
+                        tickvals=list(range(len(sub_df["Format"].unique()))),
+                        ticktext=sub_df["Format"].unique()
+                    )
+                    _dark_layout(fig_bee_player, xlab="Format", ylab="Match Metric")
+                    st.plotly_chart(fig_bee_player, use_container_width=True)
+
+                    # Player summary
+                    player_summary = upi_all[upi_all["Player"] == selected_player]
+                    st.markdown("### 📝 Player Instability Summary")
+                    st.dataframe(player_summary)
+                else:
+                    st.info("No records found for this player.")
+
+            # --- Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
             )
-            beehive.update_layout(
-                paper_bgcolor='#0b132b',  # Paper background
-                plot_bgcolor='#0b132b',   # Plot area background
-                font=dict(color="white"),  # Font color for contrast
-                title_font=dict(size=18, color="white"),
-                xaxis=dict(title="Role", color="white", tickfont=dict(color="white")),
-                yaxis=dict(title="Adaptiveness", color="white", tickfont=dict(color="white"))
-            )
 
-
-            st.plotly_chart(beehive, use_container_width=True)
-
-            # ------------------- NEW: MANUAL MULTI-ENTRY -------------------
-            st.subheader("➕ Add Multiple Players Manually")
-            num_manual = st.number_input("🔢 How many players do you want to add?", min_value=0, max_value=15, step=1)
-
-            manual_players = []
-            for i in range(num_manual):
-                with st.expander(f"🧑 Player {i+1} Details"):
-                    player = {}
-                    player["Player Name"] = st.text_input(f"Name {i+1}", key=f"name_{i}")
-                    player["Role"] = st.selectbox(f"Role {i+1}", list(role_priority.keys()), key=f"role_{i}")
-                    player["Format"] = st.selectbox(f"Format {i+1}", ["ODI", "T20"], key=f"format_{i}")
-                    player["Venue"] = st.selectbox(f"Venue for Player {i+1}", list(all_venues.keys()), key=f"venue_{i}")
-                    pitch = all_venues[player["Venue"]]
-                    threshold = venue_thresholds[player["Venue"]]
-
-                    # Role specific inputs
-                    if player["Role"] in ["opener", "anchor", "floater", "finisher"]:
-                        player["Batting Avg"] = st.number_input(f"Batting Avg {i+1}", key=f"ba_{i}")
-                        player["Batting SR"] = st.number_input(f"Strike Rate {i+1}", key=f"sr_{i}")
-                        player["Batting Rating"] = st.number_input(f"Batting Rating {i+1}", key=f"br_{i}")
-                    elif player["Role"] in ["spinner", "seamer", "fast", "death"]:
-                        player["Bowling Avg"] = st.number_input(f"Bowling Avg {i+1}", key=f"bavg_{i}")
-                        player["Bowling Econ"] = st.number_input(f"Econ Rate {i+1}", key=f"econ_{i}")
-                        player["Bowling Rating"] = st.number_input(f"Bowling Rating {i+1}", key=f"bowlrat_{i}")
-                    else:
-                        player["Batting Avg"] = st.number_input(f"Bat Avg {i+1}", key=f"arb_{i}")
-                        player["Bowling Avg"] = st.number_input(f"Bowl Avg {i+1}", key=f"arbow_{i}")
-                        player["All-Round Rating"] = st.number_input(f"AR Rating {i+1}", key=f"arr_{i}")
-                    
-                    manual_players.append((player, pitch, threshold))
-
-            if st.button("⚙️ Calculate All & Add Players"):
-                for player_data, ptype, threshold in manual_players:
-                    role = player_data["Role"]
-                    name = player_data["Player Name"]
-                    valid = False
-
-                    if role in ["opener", "anchor", "floater", "finisher"]:
-                        valid = (player_data["Batting Avg"] >= threshold["bat_avg"] and
-                                 player_data["Batting SR"] >= threshold["bat_sr"] and
-                                 player_data["Batting Rating"] >= threshold["bat_rating"])
-                    elif role in ["spinner", "seamer", "fast", "death"]:
-                        valid = (player_data["Bowling Avg"] <= threshold["bowl_avg"] and
-                                 player_data["Bowling Econ"] <= threshold["bowl_econ"] and
-                                 player_data["Bowling Rating"] >= 6.0)
-                    else:
-                        valid = player_data["All-Round Rating"] >= 6.0
-
-                    player_data["Pitch Adaptiveness"] = classify_player(pd.Series({"Role": role}), ptype, match_time)
-
-                    if valid:
-                        df = pd.concat([df, pd.DataFrame([player_data])], ignore_index=True)
-                        st.success(f"✅ `{name}` added successfully.")
-                    else:
-                        st.error(f"❌ `{name}` did not meet venue-specific metrics.")
-
-            st.markdown("✅ Final Pitch Adaptive XI")
-            st.dataframe(df)
-
-            final_csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("⬇ Download Final Pitch Adaptive XI CSV", data=final_csv, file_name="final_pitch_adaptive_xi.csv", mime="text/csv")
         else:
-            st.error("❌ Required columns missing: ['Player Name', 'Role', 'Format']")
-    else:
-        st.info("📂 Please upload the Final XI CSV to proceed.")
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
 
-    st.markdown("---")
-    st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
-    st.markdown("""<hr style="margin-top: 50px;"/><div style='text-align: center; color: gray; font-size: 14px;'>© 2025 <b>TrueXI</b>. All rights reserved.</div>""", unsafe_allow_html=True)
+    else:
+        st.info("📁 Please upload a CSV file to proceed with UPI calculation.")
+
+# ------------------ TRANSITION MISMANAGEMENT INDEX ------------------
+elif selected_feature == "Transition Mismanagement":
+    st.subheader("🔄 Transition Mismanagement Index (TMI) - Collapse & Phase Handling")
+
+    tmi_file = st.file_uploader("📂 Upload CSV with Ball-by-Ball or Partnership Stats", type="csv", key="tmi_upload")
+
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
+
+    if tmi_file:
+        df = pd.read_csv(tmi_file)
+
+        required_columns = [
+            "Match_ID", "Player", "NonStriker", "Primary Role", "Format",
+            "Over", "Runs_Scored", "Wickets_Fallen", "Partnership_Runs"
+        ]
+
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns, including NonStriker.")
+
+            # -------------------- Format-Aware Parameters --------------------
+            format_params = {
+                "T20": {"collapse_window": 3, "recovery_thresh": 20, "phases": [(1,6),(7,15),(16,20)]},
+                "ODI": {"collapse_window": 5, "recovery_thresh": 30, "phases": [(1,10),(11,40),(41,50)]},
+            }
+
+            # -------------------- TMI Metric Functions --------------------
+            import numpy as np
+
+            def collapse_sensitivity(sub, fmt):
+                """% of times ≥2 wickets fell in collapse_window overs after dismissal"""
+                window = format_params.get(fmt, format_params["ODI"])["collapse_window"]
+                dismissals = sub[sub["Wickets_Fallen"] > 0]
+                count, trigger = 0, 0
+                for i in dismissals.index:
+                    trigger += 1
+                    post_window = sub.loc[i+1:i+window, "Wickets_Fallen"].sum()
+                    if post_window >= 2:
+                        count += 1
+                return (count / trigger * 100) if trigger > 0 else 0
+
+            def momentum_drop(sub, fmt):
+                """Max drop between sequential phases"""
+                phases = format_params.get(fmt, format_params["ODI"])["phases"]
+                phase_rates = []
+                for (start, end) in phases:
+                    phase_runs = sub[(sub["Over"] >= start) & (sub["Over"] <= end)]["Runs_Scored"].sum()
+                    phase_overs = len(sub[(sub["Over"] >= start) & (sub["Over"] <= end)])
+                    rr = phase_runs / max(1, phase_overs)
+                    phase_rates.append(rr)
+                # check sequential drops
+                drops = [max(0, phase_rates[i] - phase_rates[i+1]) for i in range(len(phase_rates)-1)]
+                return max(drops) if drops else 0
+
+            def recovery_failure_rate(sub, fmt):
+                """% of times next partnership < threshold"""
+                thresh = format_params.get(fmt, format_params["ODI"])["recovery_thresh"]
+                total, fails = 0, 0
+                for val in sub["Partnership_Runs"]:
+                    total += 1
+                    if val < thresh:
+                        fails += 1
+                return (fails / total * 100) if total > 0 else 0
+
+            def tmi_measures(sub):
+                fmt = sub["Format"].iloc[0] if len(sub) > 0 else "ODI"
+                cs = collapse_sensitivity(sub, fmt)
+                md = momentum_drop(sub, fmt)
+                rfr = recovery_failure_rate(sub, fmt)
+
+                # Normalize each to 0-100
+                cs_n, md_n, rfr_n = min(cs,100), min(md*10,100), min(rfr,100)
+
+                tmi_score = (cs_n * 0.4) + (md_n * 0.3) + (rfr_n * 0.3)
+                return pd.Series({
+                    "CollapseSensitivity": cs,
+                    "MomentumDrop": md,
+                    "RecoveryFailureRate": rfr,
+                    "TMI": tmi_score
+                })
+
+            # 🔑 Group by Partnership × Format
+            tmi_all = df.groupby(["Player", "NonStriker", "Primary Role", "Format"]).apply(tmi_measures).reset_index()
+
+            # -------------------- Remarks --------------------
+            def add_remarks(tmi_df):
+                max_tmi = tmi_df["TMI"].max() if len(tmi_df) else 0
+                def remark(x):
+                    if x == 0:
+                        return "✅ Excellent Transition Handling"
+                    elif x <= 0.3 * max_tmi:
+                        return "✅ Stable"
+                    elif x <= 0.6 * max_tmi:
+                        return "⚠️ Moderate Mismanagement"
+                    elif x <= 0.8 * max_tmi:
+                        return "🔥 High Mismanagement"
+                    else:
+                        return "🌪️ Very Poor Transition Handling"
+                tmi_df["Remarks"] = tmi_df["TMI"].apply(remark)
+                return tmi_df
+
+            tmi_all = add_remarks(tmi_all)
+
+            # -------------------- View Modes --------------------
+            view_choice = st.selectbox(
+                "🔎 View Mode",
+                ["Summary View", "Format-wise Deep-Dive", "Partnership-wise Deep-Dive"],
+                help="Choose 'Summary' for overview, 'Format-wise' for breakdown, or 'Partnership-wise' for individual batter pair analysis."
+            )
+
+            import plotly.express as px
+
+            if view_choice == "Summary View":
+                st.subheader("🌐 Summary of Transition Mismanagement (TMI)")
+
+                avg_tmi = tmi_all.groupby(["Primary Role", "Format"], as_index=False)["TMI"].mean().sort_values("TMI", ascending=False)
+                fig_avg = px.bar(
+                    avg_tmi, x="Primary Role", y="TMI", color="Format", barmode="group",
+                    title="Average TMI by Role and Format", text_auto=True
+                )
+                _dark_layout(fig_avg, xlab="Role", ylab="Average TMI")
+                st.plotly_chart(fig_avg, use_container_width=True)
+
+                # Beehive plot
+                jittered = tmi_all.copy()
+                jittered["jitter_x"] = jittered["Primary Role"].apply(lambda r: list(tmi_all["Primary Role"].unique()).index(r))
+                jittered["jitter_x"] = jittered["jitter_x"] + np.random.uniform(-0.2, 0.2, size=len(jittered))
+
+                fig_bee = px.scatter(
+                    jittered, x="jitter_x", y="TMI", color="Format",
+                    hover_data=["Player", "NonStriker", "Primary Role", "Format"],
+                    title="Beehive Plot of TMI Distribution"
+                )
+                fig_bee.update_xaxes(
+                    tickvals=list(range(len(tmi_all["Primary Role"].unique()))),
+                    ticktext=tmi_all["Primary Role"].unique()
+                )
+                _dark_layout(fig_bee, xlab="Role", ylab="TMI")
+                st.plotly_chart(fig_bee, use_container_width=True)
+
+                st.download_button(
+                    "⬇ Download Full TMI Report",
+                    data=tmi_all.to_csv(index=False).encode("utf-8"),
+                    file_name="tmi_all_partnerships.csv",
+                    mime="text/csv"
+                )
+
+            elif view_choice == "Format-wise Deep-Dive":
+                st.subheader("📊 Format-wise TMI Deep-Dive")
+                selected_format = st.selectbox("Select Format", sorted(tmi_all["Format"].unique().tolist()))
+                format_df = tmi_all[tmi_all["Format"] == selected_format]
+
+                fig_box = px.box(format_df, x="Primary Role", y="TMI", color="Primary Role",
+                                 title=f"TMI Distribution by Role in {selected_format}")
+                _dark_layout(fig_box)
+                st.plotly_chart(fig_box, use_container_width=True)
+
+                st.dataframe(format_df)
+
+            else:
+                st.subheader("🤝 Partnership-wise Deep-Dive on TMI")
+                selected_pair = st.selectbox(
+                    "Select Partnership",
+                    sorted(tmi_all[["Player", "NonStriker"]].apply(lambda x: f"{x['Player']} & {x['NonStriker']}", axis=1).unique().tolist())
+                )
+
+                p1, p2 = selected_pair.split(" & ")
+                sub_df = df[((df["Player"] == p1) & (df["NonStriker"] == p2)) | ((df["Player"] == p2) & (df["NonStriker"] == p1))].reset_index(drop=True)
+
+                if len(sub_df) > 0:
+                    st.markdown(f"### 📋 Match Data for Partnership: {selected_pair}")
+                    st.dataframe(sub_df[["Match_ID", "Over", "Player", "NonStriker", "Runs_Scored", "Wickets_Fallen", "Partnership_Runs"]])
+
+                    pair_summary = tmi_all[((tmi_all["Player"] == p1) & (tmi_all["NonStriker"] == p2)) | ((tmi_all["Player"] == p2) & (tmi_all["NonStriker"] == p1))]
+                    st.markdown("### 📝 Partnership TMI Summary")
+                    st.dataframe(pair_summary)
+                else:
+                    st.info("No records found for this partnership.")
+
+            # --- Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with TMI calculation.")
