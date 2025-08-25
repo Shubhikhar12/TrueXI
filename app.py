@@ -75,7 +75,6 @@ def safe_scale(column):
         return MinMaxScaler().fit_transform(column.values.reshape(-1, 1))
     return np.full_like(column.values, 0.5).reshape(-1, 1)
 
-# ✅ Convert "90M", "500K" etc. to numbers
 def convert_social_media_value(val):
     if isinstance(val, str):
         val = val.strip().upper()
@@ -109,26 +108,47 @@ def calculate_leadership_score(df):
     df["Leadership_Score"] = 0.6 * df["Performance_score"] + 0.4 * df["Fame_score"]
     return df
 
+# ✅ NEW: Validate Final XI with Official Squad
+def validate_and_fix_squad(final_xi, official_squad, role_dict):
+    validated_xi = []
+    replacements = []
+    for _, row in final_xi.iterrows():
+        player_name = row["Player Name"]
+        player_role = row["Primary Role"]
+        if player_name not in official_squad:
+            possible_replacements = [p for p in official_squad if role_dict.get(p, "") == player_role]
+            if possible_replacements:
+                replacement = possible_replacements[0]
+                replacements.append((player_name, replacement, player_role))
+                row["Player Name"] = replacement
+                validated_xi.append(row)
+            else:
+                replacement = [p for p in official_squad if p not in [pl["Player Name"] for pl in validated_xi]][0]
+                replacements.append((player_name, replacement, "fallback"))
+                row["Player Name"] = replacement
+                row["Primary Role"] = role_dict.get(replacement, "Unknown")
+                validated_xi.append(row)
+        else:
+            validated_xi.append(row)
+    return pd.DataFrame(validated_xi), replacements
+
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
 
     if st.session_state.step == 0:
-        uploaded_file = st.file_uploader("\U0001F4C1 Upload Final XI CSV", type="csv")
+        uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
         if uploaded_file:
             df = pd.read_csv(uploaded_file)
             df.dropna(inplace=True)
             df["Primary Role"] = df["Primary Role"].astype(str).str.strip().str.lower()
 
-                 # 🔹 NEW — If Twitter/Instagram columns exist, sum them into Social Media Reach
             if "Twitter Followers" in df.columns and "Instagram Followers" in df.columns:
                 df["Twitter Followers"] = df["Twitter Followers"].apply(convert_social_media_value)
                 df["Instagram Followers"] = df["Instagram Followers"].apply(convert_social_media_value)
                 df["Social Media Reach"] = df["Twitter Followers"] + df["Instagram Followers"]
 
-            # 🔹 Still handle case where Social Media Reach is already present
             if "Social Media Reach" in df.columns:
                 df["Social Media Reach"] = df["Social Media Reach"].apply(convert_social_media_value)
-
 
             required_columns = [
                 "Player Name", "Primary Role", "Format", "Batting Avg", "Batting SR",
@@ -141,6 +161,7 @@ if selected_feature == "Main App Flow":
                 st.session_state.df = df
                 st.session_state.step = 1
                 st.success("✅ File uploaded successfully.")
+
     if st.session_state.df is not None:
         df = st.session_state.df
 
@@ -174,16 +195,12 @@ if selected_feature == "Main App Flow":
 
             df["bias_score"] = df["Fame_score"] - df["Performance_score"]
 
-            fame_q3 = df["Fame_score"].quantile(0.75)
-            perf_q1 = df["Performance_score"].quantile(0.25)
-            margin = 0.05
+            df["Is_Biased"] = (df["Fame_score"] > 0.7) & (df["Performance_score"] < 0.4)
 
-            df["Is_Biased"] = (df["Fame_score"] > fame_q3 + margin) & (df["Performance_score"] < perf_q1 - margin)
             st.session_state.df = df
 
             st.dataframe(df[df["Is_Biased"]][[
-                "Player Name", "Primary Role", "Fame_score", "Performance_score",
-                "bias_score", "Is_Biased"
+                "Player Name", "Primary Role", "Fame_score", "Performance_score", "bias_score", "Is_Biased"
             ]])
 
             fig = px.scatter(
@@ -235,8 +252,9 @@ if selected_feature == "Main App Flow":
             st.plotly_chart(beehive_fig, use_container_width=True)
 
 
+        
         if st.button("Generate Final Unbiased XI"):
-            st.subheader("\U0001F3C6 Final Unbiased XI")
+            st.subheader("🏆 Final Unbiased XI")
             df = st.session_state.df
             unbiased_df = df[df["Is_Biased"] == False].copy()
 
@@ -268,6 +286,19 @@ if selected_feature == "Main App Flow":
             final_xi["Vice_Captain"] = False
             final_xi.iloc[0, final_xi.columns.get_loc("Captain")] = True
             final_xi.iloc[1, final_xi.columns.get_loc("Vice_Captain")] = True
+
+            # ✅ NEW: Validate with official squad
+            if "Official_Squad" in df.columns:
+                official_squad = df["Official_Squad"].dropna().unique().tolist()
+                role_dict = dict(zip(df["Player Name"], df["Primary Role"]))
+                validated_xi, replacements = validate_and_fix_squad(final_xi, official_squad, role_dict)
+                final_xi = validated_xi
+                if replacements:
+                    st.subheader("🔄 Replacements Made")
+                    for old, new, role in replacements:
+                        st.warning(f"Replaced {old} ➝ {new} (Role: {role})")
+                else:
+                    st.success("All Final XI players are part of the official squad ✅")
 
             st.session_state.final_xi = final_xi
             st.dataframe(final_xi[[
