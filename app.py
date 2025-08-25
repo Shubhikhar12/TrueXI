@@ -134,6 +134,8 @@ def validate_and_fix_squad(final_xi, official_squad, role_dict):
 
 # ------------------ MAIN APP FLOW ------------------
 if selected_feature == "Main App Flow":
+    st.subheader("🏏 Main App Flow")
+
 
     if st.session_state.step == 0:
         uploaded_file = st.file_uploader("📁 Upload Final XI CSV", type="csv")
