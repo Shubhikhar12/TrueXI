@@ -338,51 +338,58 @@ if selected_feature == "Main App Flow":
                     "Player Name", "Primary Role", "Performance_score", "Fame_score", "Leadership_Score"
                 ]])
 
+                st.session_state.substitutes = substitutes
+
+
                 sub_csv = substitutes[[
                     "Player Name", "Primary Role", "Performance_score", "Fame_score", "Leadership_Score"
                 ]].to_csv(index=False).encode("utf-8")
 
                 st.download_button("⬇ Download Substitutes CSV", sub_csv, "substitutes.csv", "text/csv")
 
-
-        if "final_xi" in st.session_state:
-            st.markdown("---")
-            st.subheader("✍ Select Future Leadership Manually")
-            with st.form("manual_leadership_form"):
-                manual_candidates = st.multiselect(
-                    "Select at least 2 players from the Unbiased XI for custom captain & vice-captain evaluation:",
-                    options=st.session_state.final_xi["Player Name"].tolist()
-                )
-                submitted = st.form_submit_button("\U0001F9E0 Calculate Leadership")
-
-            if submitted:
-                if len(manual_candidates) >= 2:
-                    manual_df = st.session_state.final_xi[
-                        st.session_state.final_xi["Player Name"].isin(manual_candidates)
-                    ].copy()
-
-                    manual_df = calculate_leadership_score(manual_df)
-                    manual_df = manual_df.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False)
-                    manual_df["Captain"] = False
-                    manual_df["Vice_Captain"] = False
-                    manual_df.iloc[0, manual_df.columns.get_loc("Captain")] = True
-                    manual_df.iloc[1, manual_df.columns.get_loc("Vice_Captain")] = True
-
-                    st.success(f"🥢 Manually Selected Captain: {manual_df.iloc[0]['Player Name']} | Leadership Score: {manual_df.iloc[0]['Leadership_Score']:.2f}")
-                    st.info(f"🎖 Manually Selected Vice-Captain: {manual_df.iloc[1]['Player Name']} | Leadership Score: {manual_df.iloc[1]['Leadership_Score']:.2f}")
-
-                    st.dataframe(manual_df[[
-                        "Player Name", "Primary Role", "Performance_score", "Fame_score",
-                        "Leadership_Score", "Captain", "Vice_Captain"
-                    ]])
-
-                    manual_csv = manual_df[[
-                        "Player Name", "Primary Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
-                    ]].to_csv(index=False).encode("utf-8")
-
-                    st.download_button("⬇ Download Manual Captain-Vice CSV", manual_csv, "manual_captain_vice.csv", "text/csv")
-                else:
-                    st.warning("👥 Please select at least 2 players to perform leadership calculation.")
+            if "final_xi" in st.session_state:
+                st.markdown("---")
+                st.subheader("✍ Select Future Leadership Manually")
+                
+                # ✅ Combine Final XI + Substitutes if available
+                combined_players = st.session_state.final_xi.copy()
+                if "substitutes" in st.session_state and not st.session_state.substitutes.empty:
+                    combined_players = pd.concat([combined_players, st.session_state.substitutes]).drop_duplicates("Player Name")
+                    
+                    with st.form("manual_leadership_form"):
+                        manual_candidates = st.multiselect(
+                            "Select at least 2 players from the Unbiased XI and Substitutes for custom captain & vice-captain evaluation:",
+                            options=combined_players["Player Name"].tolist()
+                        )
+                        
+                        submitted = st.form_submit_button("\U0001F9E0 Calculate Leadership")
+                        
+                        if submitted:
+                            if len(manual_candidates) >= 2:
+                                manual_df = combined_players[combined_players["Player Name"].isin(manual_candidates)].copy()
+                                manual_df = calculate_leadership_score(manual_df)
+                                manual_df = manual_df.sort_values(by=["Leadership_Score", "Fame_score"], ascending=False)
+                                manual_df["Captain"] = False
+                                manual_df["Vice_Captain"] = False
+                                manual_df.iloc[0, manual_df.columns.get_loc("Captain")] = True
+                                manual_df.iloc[1, manual_df.columns.get_loc("Vice_Captain")] = True
+                                
+                                st.success(f"🥢 Manually Selected Captain: {manual_df.iloc[0]['Player Name']} | Leadership Score: {manual_df.iloc[0]['Leadership_Score']:.2f}")
+                                st.info(f"🎖 Manually Selected Vice-Captain: {manual_df.iloc[1]['Player Name']} | Leadership Score: {manual_df.iloc[1]['Leadership_Score']:.2f}")
+                                
+                                st.dataframe(manual_df[[
+                                    "Player Name", "Primary Role", "Performance_score", "Fame_score",
+                                    "Leadership_Score", "Captain", "Vice_Captain"
+                                ]])
+                                
+                                manual_csv = manual_df[[
+                                    "Player Name", "Primary Role", "Performance_score", "Fame_score", "Captain", "Vice_Captain"
+                                    ]].to_csv(index=False).encode("utf-8")
+                                
+                                st.download_button("⬇ Download Manual Captain-Vice CSV", manual_csv, "manual_captain_vice.csv", "text/csv")
+                                
+                            else:
+                                st.warning("👥 Please select at least 2 players to perform leadership calculation.")      
 
     st.markdown("---")
     st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
