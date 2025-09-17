@@ -57,7 +57,7 @@ st.markdown("""
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased Tools")
-selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "Opponent-Specific Impact Scores"])
+selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "Opponent-Specific Impact Scores", "Venue & Pitch Weakness"])
 
 # ------------------ HEADER ------------------
 # If you don't have 'app logo.png' remove this line or provide the file in the working dir
@@ -904,3 +904,226 @@ elif selected_feature == "Opponent-Specific Impact Scores":
 
     else:
         st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
+
+# ------------------ VENUE & PITCH WEAKNESS ------------------
+elif selected_feature == "Venue & Pitch Weakness":
+    st.subheader("🏟 Venue & Pitch Weakness Analysis")
+
+    vp_file = st.file_uploader("📂 Upload CSV with Player Match Stats", type="csv", key="vp_upload")
+
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
+
+    if vp_file:
+        df = pd.read_csv(vp_file)
+
+        required_columns = [
+            "Player", "Primary Role", "Format", "Venue", "Pitch_Type",
+            "Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Catches", "Run_Outs", "Stumpings"
+        ]
+
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns (including Venue & Pitch_Type).")
+
+            # -------------------- Impact Calculation Functions --------------------
+            def batting_impact(runs, balls):
+                if pd.isna(balls) or balls == 0:
+                    return 0.0
+                strike_rate = (runs / balls) * 100.0
+                return (runs * 0.6) + (strike_rate * 0.4)
+
+            def bowling_impact(wickets, overs, runs_conceded):
+                if pd.isna(overs) or overs == 0:
+                    return 0.0
+                economy = runs_conceded / overs
+                return (wickets * 20 * 0.7) + ((6 - economy) * 10 * 0.3)
+
+            def fielding_impact(catches, run_outs, stumpings):
+                return (catches * 10) + (run_outs * 12) + (stumpings * 15)
+
+            def calculate_role_impact(row):
+                role = str(row["Primary Role"]).strip().lower()
+                runs = row["Runs"]; balls = row["Balls_Faced"]
+                wkts = row["Wickets"]; overs = row["Overs_Bowled"]; rc = row["Runs_Conceded"]
+                catches = row["Catches"]; ro = row["Run_Outs"]; stp = row["Stumpings"]
+
+                if role == "batter":
+                    return batting_impact(runs, balls)
+                elif role == "bowler":
+                    return bowling_impact(wkts, overs, rc)
+                elif role == "all-rounder":
+                    bat = batting_impact(runs, balls)
+                    bowl = bowling_impact(wkts, overs, rc)
+                    return (bat + bowl) / 2.0
+                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
+                    bat = batting_impact(runs, balls)
+                    wk_field = fielding_impact(catches, ro, stp)
+                    return bat + (wk_field * 0.5)
+                else:
+                    return batting_impact(runs, balls)
+
+            # Safety fill for numeric columns
+            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
+            df[num_cols] = df[num_cols].fillna(0)
+
+            # Per-match impact
+            df["Impact"] = df.apply(calculate_role_impact, axis=1)
+
+            # -------------------- Venue & Pitch Aggregations --------------------
+            overall = (
+                df.groupby(["Player", "Primary Role", "Format"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Overall_Avg_Impact"})
+            )
+
+            vs_venue = (
+                df.groupby(["Player", "Primary Role", "Venue", "Format"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Venue_Avg_Impact"})
+            )
+
+            vs_pitch = (
+                df.groupby(["Player", "Primary Role", "Pitch_Type", "Format"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Pitch_Avg_Impact"})
+            )
+
+            venue_df = vs_venue.merge(overall, on=["Player", "Primary Role", "Format"], how="left")
+            venue_df["Venue_Performance"] = venue_df.apply(
+                lambda r: (r["Venue_Avg_Impact"] / r["Overall_Avg_Impact"] * 100.0) if r["Overall_Avg_Impact"] not in [0, None] else 0.0,
+                axis=1
+            )
+
+            pitch_df = vs_pitch.merge(overall, on=["Player", "Primary Role", "Format"], how="left")
+            pitch_df["Pitch_Performance"] = pitch_df.apply(
+                lambda r: (r["Pitch_Avg_Impact"] / r["Overall_Avg_Impact"] * 100.0) if r["Overall_Avg_Impact"] not in [0, None] else 0.0,
+                axis=1
+            )
+
+            # Remarks
+            def assign_remarks(val):
+                if val >= 120:
+                    return "🏆 Excellent"
+                elif val >= 100:
+                    return "🔥 Strong"
+                elif val >= 80:
+                    return "✅ Solid"
+                elif val >= 60:
+                    return "⚠ Average"
+                else:
+                    return "🔻 Weak"
+
+            venue_df["Remarks"] = venue_df["Venue_Performance"].apply(assign_remarks)
+            pitch_df["Remarks"] = pitch_df["Pitch_Performance"].apply(assign_remarks)
+
+            # ---------- Filters ----------
+            format_list = sorted(df["Format"].unique().tolist())
+            chosen_format = st.selectbox("📌 Select Format", format_list)
+
+            player_list = sorted(df["Player"].unique().tolist())
+            chosen_player = st.selectbox("👤 Select Player", ["All Players"] + player_list)
+
+            chosen_venue = st.selectbox("🏟 Select Venue", ["All Venues"] + sorted(df["Venue"].unique().tolist()))
+            chosen_pitch = st.selectbox("🎯 Select Pitch Type", ["All Pitch Types"] + sorted(df["Pitch_Type"].unique().tolist()))
+
+            venue_filter = venue_df[venue_df["Format"] == chosen_format]
+            pitch_filter = pitch_df[pitch_df["Format"] == chosen_format]
+
+            if chosen_player != "All Players":
+                venue_filter = venue_filter[venue_filter["Player"] == chosen_player]
+                pitch_filter = pitch_filter[pitch_filter["Player"] == chosen_player]
+
+            if chosen_venue != "All Venues":
+                venue_filter = venue_filter[venue_filter["Venue"] == chosen_venue]
+
+            if chosen_pitch != "All Pitch Types":
+                pitch_filter = pitch_filter[pitch_filter["Pitch_Type"] == chosen_pitch]
+
+            import plotly.express as px
+
+            # -------------------- Venue Heatmap --------------------
+            st.subheader("🏟 Venue Performance Heatmap")
+            pivot_venue = venue_filter.pivot_table(index="Player", columns="Venue", values="Venue_Performance", fill_value=0)
+            fig_heat_venue = px.imshow(pivot_venue, labels=dict(x="Venue", y="Player", color="Performance (%)"), aspect="auto", color_continuous_scale="Plasma")
+            _dark_layout(fig_heat_venue)
+            st.plotly_chart(fig_heat_venue, use_container_width=True)
+
+            # -------------------- Pitch Violin Plot --------------------
+            st.subheader("🎯 Pitch Performance Distribution")
+            fig_violin_pitch = px.violin(
+                pitch_filter, x="Pitch_Type", y="Pitch_Performance", color="Remarks",
+                box=True, points="all", hover_data=["Player"],
+                title="Pitch Weakness / Strength per Player"
+            )
+            _dark_layout(fig_violin_pitch, xlab="Pitch Type", ylab="Performance (%)")
+            st.plotly_chart(fig_violin_pitch, use_container_width=True)
+
+            # -------------------- Top 11 & Substitutes Recommendation --------------------
+            st.subheader("🏏 Recommended Playing XI & Substitutes")
+
+            # Venue-based selection
+            if len(venue_filter) > 0:
+                df_sorted = venue_filter.sort_values("Venue_Performance", ascending=False)
+            else:
+                df_sorted = pitch_filter.sort_values("Pitch_Performance", ascending=False)
+
+            wk_players = df_sorted[df_sorted["Primary Role"].str.lower().str.contains("wk")].sort_values(
+                "Venue_Performance" if len(venue_filter) else "Pitch_Performance", ascending=False
+            )
+            other_players = df_sorted[~df_sorted["Primary Role"].str.lower().str.contains("wk")].sort_values(
+                "Venue_Performance" if len(venue_filter) else "Pitch_Performance", ascending=False
+            )
+
+            recommended_wk = wk_players.head(1)
+            recommended_others = other_players.head(10)
+            recommended_11 = pd.concat([recommended_wk, recommended_others]).sort_values(
+                "Venue_Performance" if len(venue_filter) else "Pitch_Performance", ascending=False
+            ).reset_index(drop=True)
+
+            remaining_players = pd.concat([wk_players.iloc[1:], other_players.iloc[10:]]).sort_values(
+                "Venue_Performance" if len(venue_filter) else "Pitch_Performance", ascending=False
+            )
+            substitutes = remaining_players.head(4).reset_index(drop=True)
+
+            st.markdown("### ✅ Playing XI")
+            st.dataframe(recommended_11[["Player", "Primary Role", "Remarks"]])
+
+            st.markdown("### ⚡ Substitutes")
+            st.dataframe(substitutes[["Player", "Primary Role", "Remarks"]])
+
+            # -------------------- CSV Downloads --------------------
+            csv_venue = venue_filter.to_csv(index=False).encode("utf-8")
+            csv_pitch = pitch_filter.to_csv(index=False).encode("utf-8")
+            st.download_button("⬇ Download Venue Report CSV", data=csv_venue, file_name=f"venue_report_{chosen_format}.csv", mime="text/csv")
+            st.download_button("⬇ Download Pitch Report CSV", data=csv_pitch, file_name=f"pitch_report_{chosen_format}.csv", mime="text/csv")
+
+            # --- Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with Venue & Pitch Weakness analysis.")
