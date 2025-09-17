@@ -780,84 +780,6 @@ elif selected_feature == "Opponent-Specific Impact Scores":
                 _dark_layout(fig_heat)
                 st.plotly_chart(fig_heat, use_container_width=True)
 
-                # Radar Chart per Top 3 Players
-                st.markdown("### 🌀 Radar Chart of Top Players Across Opponents")
-                top_players = osis_fmt.groupby("Player")["OSIS"].mean().sort_values(ascending=False).head(3).index.tolist()
-                for player in top_players:
-                    player_data = osis_fmt[osis_fmt["Player"] == player]
-                    fig_radar = go.Figure()
-                    fig_radar.add_trace(go.Scatterpolar(
-                        r=player_data["OSIS"],
-                        theta=player_data["Opponent"],
-                        fill='toself',
-                        name=player
-                    ))
-                    fig_radar.update_layout(
-                        polar=dict(radialaxis=dict(visible=True, range=[0, max(osis_fmt["OSIS"].max(), 100)])),
-                        showlegend=True,
-                        title=f"Radar OSIS — {player}"
-                    )
-                    st.plotly_chart(fig_radar, use_container_width=True)
-
-                # Sunburst Chart
-                st.markdown("### 🌞 Sunburst: Player → Role → Opponent → OSIS")
-                fig_sun = px.sunburst(
-                    osis_fmt,
-                    path=['Player', 'Primary Role', 'Opponent'],
-                    values='OSIS',
-                    color='OSIS',
-                    color_continuous_scale='Viridis'
-                )
-                _dark_layout(fig_sun)
-                st.plotly_chart(fig_sun, use_container_width=True)
-
-                # Treemap Top Performers per Opponent
-                st.markdown("### 📦 Treemap: Top Performers per Opponent")
-                fig_tree = px.treemap(
-                    osis_fmt,
-                    path=['Opponent', 'Player'],
-                    values='OSIS',
-                    color='OSIS',
-                    color_continuous_scale='Blues',
-                    title='Top Players OSIS Treemap'
-                )
-                _dark_layout(fig_tree)
-                st.plotly_chart(fig_tree, use_container_width=True)
-
-                # Top 6 per Opponent with Radar + Treemap
-                st.markdown("### 🏟 Top 6 Matchups per Opponent with Visuals")
-                for opp in opponent_list:
-                    sub = osis_fmt[osis_fmt["Opponent"] == opp].sort_values("OSIS", ascending=False).head(6)
-                    st.markdown(f"#### {opp} — Top 6 Players")
-                    st.dataframe(sub[["Player", "Primary Role", "Opponent_Avg_Impact", "Overall_Avg_Impact", "OSIS", "Remarks"]].reset_index(drop=True))
-
-                    # Treemap
-                    fig_sub_tree = px.treemap(
-                        sub,
-                        path=['Player'],
-                        values='OSIS',
-                        color='OSIS',
-                        color_continuous_scale='Reds',
-                        title=f'Top 6 OSIS vs {opp}'
-                    )
-                    _dark_layout(fig_sub_tree)
-                    st.plotly_chart(fig_sub_tree, use_container_width=True)
-
-                    # Radar Chart
-                    fig_sub_radar = go.Figure()
-                    fig_sub_radar.add_trace(go.Scatterpolar(
-                        r=sub["OSIS"],
-                        theta=sub["Player"],
-                        fill='toself',
-                        name=f'Top 6 {opp}'
-                    ))
-                    fig_sub_radar.update_layout(
-                        polar=dict(radialaxis=dict(visible=True, range=[0, max(sub["OSIS"].max(), 100)])),
-                        showlegend=True,
-                        title=f'Radar OSIS — Top 6 {opp}'
-                    )
-                    st.plotly_chart(fig_sub_radar, use_container_width=True)
-
             # -------------------- SINGLE OPPONENT (DEEP-DIVE) --------------------
             else:
                 selected_opponent = chosen_opponent
@@ -870,22 +792,30 @@ elif selected_feature == "Opponent-Specific Impact Scores":
                     .reset_index(drop=True)
                 )
 
-                # Recompute remarks
-                max_osis = osis_df["OSIS"].max() if len(osis_df) else 0
-                def get_remark(osis_score, max_):
-                    if osis_score == max_:
-                        return "🏆 Top Matchup"
-                    elif osis_score >= 0.8 * max_:
-                        return "🔥 Strong"
-                    elif osis_score >= 0.6 * max_:
-                        return "✅ Solid"
-                    elif osis_score >= 0.4 * max_:
-                        return "⚠ Average"
-                    else:
-                        return "🔻 Weak"
-                osis_df["Remarks"] = osis_df["OSIS"].apply(lambda x: get_remark(x, max_osis))
+                # -------------------- Best XI & Substitutes Recommendation (1 WK only) --------------------
+                st.subheader("🏏 Recommended Playing XI & Substitutes")
 
-                # OSIS Table
+                # Separate wicket-keepers and others
+                wk_players = osis_df[osis_df["Primary Role"].str.lower().str.contains("wk")].sort_values("OSIS", ascending=False)
+                other_players = osis_df[~osis_df["Primary Role"].str.lower().str.contains("wk")].sort_values("OSIS", ascending=False)
+
+                # Select 1 WK
+                recommended_wk = wk_players.head(1)
+                # Remaining 10 players
+                recommended_others = other_players.head(10)
+                recommended_11 = pd.concat([recommended_wk, recommended_others]).sort_values("OSIS", ascending=False).reset_index(drop=True)
+
+                # Substitutes: next 4 best remaining players
+                remaining_players = pd.concat([wk_players.iloc[1:], other_players.iloc[10:]]).sort_values("OSIS", ascending=False)
+                substitutes = remaining_players.head(4).reset_index(drop=True)
+
+                st.markdown("### ✅ Playing XI")
+                st.dataframe(recommended_11[["Player", "Primary Role", "OSIS", "Remarks"]])
+
+                st.markdown("### ⚡ Substitutes")
+                st.dataframe(substitutes[["Player", "Primary Role", "OSIS", "Remarks"]])
+
+                # -------------------- OSIS Table --------------------
                 st.markdown(f"### 📋 OSIS Report vs {selected_opponent} — {chosen_format}")
                 st.dataframe(osis_df[["Player", "Primary Role", "Overall_Avg_Impact", "Opponent_Avg_Impact", "OSIS", "Remarks"]])
 
@@ -898,6 +828,7 @@ elif selected_feature == "Opponent-Specific Impact Scores":
                     mime="text/csv"
                 )
 
+                # -------------------- Visualizations --------------------
                 # Bar Chart
                 bar_fig = px.bar(
                     osis_df, x="Player", y="OSIS", color="Remarks", text_auto=True,
