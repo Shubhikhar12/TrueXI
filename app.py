@@ -57,7 +57,7 @@ st.markdown("""
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased Tools")
-selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "Opponent-Specific Impact Scores", "Venue & Pitch Weakness"])
+selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "Opponent-Specific Impact Scores", "Venue & Pitch Analysis"])
 
 # ------------------ HEADER ------------------
 # If you don't have 'app logo.png' remove this line or provide the file in the working dir
@@ -906,8 +906,8 @@ elif selected_feature == "Opponent-Specific Impact Scores":
         st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
 
 # ------------------ VENUE & PITCH WEAKNESS ------------------
-elif selected_feature == "Venue & Pitch Weakness":
-    st.subheader("🏟 Venue & Pitch Weakness Analysis")
+elif selected_feature == "Venue & Pitch Analysis":
+    st.subheader("🏟 Venue & Pitch Analysis")
 
     vp_file = st.file_uploader("📂 Upload CSV with Player Match Stats", type="csv", key="vp_upload")
 
