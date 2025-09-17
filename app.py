@@ -57,7 +57,7 @@ st.markdown("""
 
 # ------------------ SIDEBAR ------------------
 st.sidebar.title("📊 Unbiased Tools")
-selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow"])
+selected_feature = st.sidebar.radio("Select Feature", ["Main App Flow", "Opponent-Specific Impact Scores"])
 
 # ------------------ HEADER ------------------
 # If you don't have 'app logo.png' remove this line or provide the file in the working dir
@@ -626,3 +626,350 @@ if selected_feature == "Main App Flow":
             © 2025 <b>TrueXI</b>. All rights reserved.
         </div>
         """, unsafe_allow_html=True)
+
+# ------------------ OPPONENT-SPECIFIC IMPACT SCORE ------------------
+elif selected_feature == "Opponent-Specific Impact Scores":
+    st.subheader("🎯 Opponent-Specific Impact Scores (OSIS) - Matchup Analysis")
+
+    osis_file = st.file_uploader("📂 Upload CSV with Player Match Stats", type="csv", key="osis_upload")
+
+    # ---------- Helpers ----------
+    def _dark_layout(fig, title=None, xlab=None, ylab=None):
+        fig.update_layout(
+            plot_bgcolor="#0b132b",
+            paper_bgcolor="#0b132b",
+            font=dict(color="white"),
+            xaxis_title=xlab,
+            yaxis_title=ylab,
+            title=title,
+            legend_title="Legend"
+        )
+        return fig
+
+    if osis_file:
+        df = pd.read_csv(osis_file)
+
+        required_columns = [
+            "Player", "Primary Role", "Opponent", "Format",
+            "Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded",
+            "Catches", "Run_Outs", "Stumpings"
+        ]
+
+        if all(col in df.columns for col in required_columns):
+            st.success("✅ File loaded with all required columns (including Format).")
+
+            # -------------------- Impact Calculation Functions --------------------
+            def batting_impact(runs, balls):
+                if pd.isna(balls) or balls == 0:
+                    return 0.0
+                strike_rate = (runs / balls) * 100.0
+                return (runs * 0.6) + (strike_rate * 0.4)
+
+            def bowling_impact(wickets, overs, runs_conceded):
+                if pd.isna(overs) or overs == 0:
+                    return 0.0
+                economy = runs_conceded / overs
+                return (wickets * 20 * 0.7) + ((6 - economy) * 10 * 0.3)
+
+            def fielding_impact(catches, run_outs, stumpings):
+                return (catches * 10) + (run_outs * 12) + (stumpings * 15)
+
+            def calculate_role_impact(row):
+                role = str(row["Primary Role"]).strip().lower()
+                runs = row["Runs"]; balls = row["Balls_Faced"]
+                wkts = row["Wickets"]; overs = row["Overs_Bowled"]; rc = row["Runs_Conceded"]
+                catches = row["Catches"]; ro = row["Run_Outs"]; stp = row["Stumpings"]
+
+                if role == "batter":
+                    return batting_impact(runs, balls)
+                elif role == "bowler":
+                    return bowling_impact(wkts, overs, rc)
+                elif role == "all-rounder":
+                    bat = batting_impact(runs, balls)
+                    bowl = bowling_impact(wkts, overs, rc)
+                    return (bat + bowl) / 2.0
+                elif role in ["wk-batter", "wk batter", "wicketkeeper", "wicket-keeper", "wk"]:
+                    bat = batting_impact(runs, balls)
+                    wk_field = fielding_impact(catches, ro, stp)
+                    return bat + (wk_field * 0.5)
+                else:
+                    return batting_impact(runs, balls)
+
+            # Safety fill for numeric columns
+            num_cols = ["Runs", "Balls_Faced", "Wickets", "Overs_Bowled", "Runs_Conceded", "Catches", "Run_Outs", "Stumpings"]
+            df[num_cols] = df[num_cols].fillna(0)
+
+            # Per-match impact
+            df["Impact"] = df.apply(calculate_role_impact, axis=1)
+
+            # -------------------- OSIS Calculation --------------------
+            overall = (
+                df.groupby(["Player", "Primary Role", "Format"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Overall_Avg_Impact"})
+            )
+
+            vs_opp = (
+                df.groupby(["Player", "Primary Role", "Opponent", "Format"], as_index=False)["Impact"]
+                .mean()
+                .rename(columns={"Impact": "Opponent_Avg_Impact"})
+            )
+
+            osis_all = vs_opp.merge(overall, on=["Player", "Primary Role", "Format"], how="left")
+
+            osis_all["OSIS"] = osis_all.apply(
+                lambda r: (r["Opponent_Avg_Impact"] / r["Overall_Avg_Impact"] * 100.0) if r["Overall_Avg_Impact"] not in [0, None] else 0.0,
+                axis=1
+            )
+
+            # -------------------- Remarks per Opponent --------------------
+            def add_remarks_per_opponent(osis_df):
+                out = []
+                for (opp, fmt), sub in osis_df.groupby(["Opponent", "Format"]):
+                    sub = sub.copy()
+                    max_osis = sub["OSIS"].max() if len(sub) else 0
+                    def remark(x):
+                        if x == max_osis:
+                            return "🏆 Top Matchup"
+                        elif x >= 0.8 * max_osis:
+                            return "🔥 Strong"
+                        elif x >= 0.6 * max_osis:
+                            return "✅ Solid"
+                        elif x >= 0.4 * max_osis:
+                            return "⚠ Average"
+                        else:
+                            return "🔻 Weak"
+                    sub["Remarks"] = sub["OSIS"].apply(remark)
+                    out.append(sub)
+                return pd.concat(out, ignore_index=True) if out else osis_df
+
+            osis_all = add_remarks_per_opponent(osis_all)
+
+            # ---------- Filters: Format, Player, Opponent ----------
+            format_list = sorted(osis_all["Format"].unique().tolist())
+            chosen_format = st.selectbox("📌 Select Format", format_list)
+
+            osis_fmt = osis_all[osis_all["Format"] == chosen_format]
+
+            player_list = sorted(osis_fmt["Player"].unique().tolist())
+            chosen_player = st.selectbox("👤 Select Player", ["All Players"] + player_list)
+
+            if chosen_player != "All Players":
+                osis_fmt = osis_fmt[osis_fmt["Player"] == chosen_player]
+
+            opponent_list = sorted(osis_fmt["Opponent"].unique().tolist())
+            chosen_opponent = st.selectbox("🔎 Select Opponent", ["All Opponents (Summary)"] + opponent_list)
+
+            import plotly.express as px
+            import plotly.graph_objects as go
+
+            # -------------------- ALL OPPONENTS (SUMMARY) --------------------
+            if  chosen_opponent == "All Opponents (Summary)":
+                st.subheader(f"🌐 Summary Across All Opponents — {chosen_format}")
+
+                # Heatmap
+                pivot_osis = osis_fmt.pivot_table(index="Player", columns="Opponent", values="OSIS", aggfunc="mean").fillna(0).round(2)
+                st.markdown("OSIS Heatmap (Players × Opponents)")
+                fig_heat = px.imshow(
+                    pivot_osis,
+                    labels=dict(x="Opponent", y="Player", color="OSIS"),
+                    aspect="auto",
+                    title=f"OSIS Heatmap Across Opponents ({chosen_format})",
+                    color_continuous_scale='Viridis'
+                )
+                _dark_layout(fig_heat)
+                st.plotly_chart(fig_heat, use_container_width=True)
+
+                # Radar Chart per Top 3 Players
+                st.markdown("### 🌀 Radar Chart of Top Players Across Opponents")
+                top_players = osis_fmt.groupby("Player")["OSIS"].mean().sort_values(ascending=False).head(3).index.tolist()
+                for player in top_players:
+                    player_data = osis_fmt[osis_fmt["Player"] == player]
+                    fig_radar = go.Figure()
+                    fig_radar.add_trace(go.Scatterpolar(
+                        r=player_data["OSIS"],
+                        theta=player_data["Opponent"],
+                        fill='toself',
+                        name=player
+                    ))
+                    fig_radar.update_layout(
+                        polar=dict(radialaxis=dict(visible=True, range=[0, max(osis_fmt["OSIS"].max(), 100)])),
+                        showlegend=True,
+                        title=f"Radar OSIS — {player}"
+                    )
+                    st.plotly_chart(fig_radar, use_container_width=True)
+
+                # Sunburst Chart
+                st.markdown("### 🌞 Sunburst: Player → Role → Opponent → OSIS")
+                fig_sun = px.sunburst(
+                    osis_fmt,
+                    path=['Player', 'Primary Role', 'Opponent'],
+                    values='OSIS',
+                    color='OSIS',
+                    color_continuous_scale='Viridis'
+                )
+                _dark_layout(fig_sun)
+                st.plotly_chart(fig_sun, use_container_width=True)
+
+                # Treemap Top Performers per Opponent
+                st.markdown("### 📦 Treemap: Top Performers per Opponent")
+                fig_tree = px.treemap(
+                    osis_fmt,
+                    path=['Opponent', 'Player'],
+                    values='OSIS',
+                    color='OSIS',
+                    color_continuous_scale='Blues',
+                    title='Top Players OSIS Treemap'
+                )
+                _dark_layout(fig_tree)
+                st.plotly_chart(fig_tree, use_container_width=True)
+
+                # Top 6 per Opponent with Radar + Treemap
+                st.markdown("### 🏟 Top 6 Matchups per Opponent with Visuals")
+                for opp in opponent_list:
+                    sub = osis_fmt[osis_fmt["Opponent"] == opp].sort_values("OSIS", ascending=False).head(6)
+                    st.markdown(f"#### {opp} — Top 6 Players")
+                    st.dataframe(sub[["Player", "Primary Role", "Opponent_Avg_Impact", "Overall_Avg_Impact", "OSIS", "Remarks"]].reset_index(drop=True))
+
+                    # Treemap
+                    fig_sub_tree = px.treemap(
+                        sub,
+                        path=['Player'],
+                        values='OSIS',
+                        color='OSIS',
+                        color_continuous_scale='Reds',
+                        title=f'Top 6 OSIS vs {opp}'
+                    )
+                    _dark_layout(fig_sub_tree)
+                    st.plotly_chart(fig_sub_tree, use_container_width=True)
+
+                    # Radar Chart
+                    fig_sub_radar = go.Figure()
+                    fig_sub_radar.add_trace(go.Scatterpolar(
+                        r=sub["OSIS"],
+                        theta=sub["Player"],
+                        fill='toself',
+                        name=f'Top 6 {opp}'
+                    ))
+                    fig_sub_radar.update_layout(
+                        polar=dict(radialaxis=dict(visible=True, range=[0, max(sub["OSIS"].max(), 100)])),
+                        showlegend=True,
+                        title=f'Radar OSIS — Top 6 {opp}'
+                    )
+                    st.plotly_chart(fig_sub_radar, use_container_width=True)
+
+            # -------------------- SINGLE OPPONENT (DEEP-DIVE) --------------------
+            else:
+                selected_opponent = chosen_opponent
+                st.subheader(f"🧭 Deep-Dive: OSIS vs {selected_opponent} — {chosen_format}")
+
+                osis_df = (
+                    osis_fmt[osis_fmt["Opponent"] == selected_opponent]
+                    .copy()
+                    .sort_values("OSIS", ascending=False)
+                    .reset_index(drop=True)
+                )
+
+                # Recompute remarks
+                max_osis = osis_df["OSIS"].max() if len(osis_df) else 0
+                def get_remark(osis_score, max_):
+                    if osis_score == max_:
+                        return "🏆 Top Matchup"
+                    elif osis_score >= 0.8 * max_:
+                        return "🔥 Strong"
+                    elif osis_score >= 0.6 * max_:
+                        return "✅ Solid"
+                    elif osis_score >= 0.4 * max_:
+                        return "⚠ Average"
+                    else:
+                        return "🔻 Weak"
+                osis_df["Remarks"] = osis_df["OSIS"].apply(lambda x: get_remark(x, max_osis))
+
+                # OSIS Table
+                st.markdown(f"### 📋 OSIS Report vs {selected_opponent} — {chosen_format}")
+                st.dataframe(osis_df[["Player", "Primary Role", "Overall_Avg_Impact", "Opponent_Avg_Impact", "OSIS", "Remarks"]])
+
+                # CSV Download
+                csv_data = osis_df.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    f"⬇ Download OSIS Report CSV ({chosen_format})",
+                    data=csv_data,
+                    file_name=f"osis_report_vs_{selected_opponent}_{chosen_format}.csv",
+                    mime="text/csv"
+                )
+
+                # Bar Chart
+                bar_fig = px.bar(
+                    osis_df, x="Player", y="OSIS", color="Remarks", text_auto=True,
+                    title=f"OSIS vs {selected_opponent} — {chosen_format}"
+                )
+                _dark_layout(bar_fig, xlab="Player", ylab="OSIS")
+                st.plotly_chart(bar_fig, use_container_width=True)
+
+                # Beehive Plot
+                st.subheader("🐝 Beehive Plot (Impact vs Opponent)")
+                bee_plot = px.strip(
+                    osis_df,
+                    x="Primary Role",
+                    y="OSIS",
+                    hover_data=["Player", "Remarks"],
+                    color="Remarks",
+                    title=f"Beehive Plot of OSIS vs {selected_opponent} — {chosen_format}"
+                )
+                bee_plot.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
+                _dark_layout(bee_plot, xlab="Role", ylab="OSIS")
+                st.plotly_chart(bee_plot, use_container_width=True)
+
+                # Treemap Deep-Dive
+                st.markdown("### 📦 Treemap: Player Performance vs Opponent")
+                fig_tree = px.treemap(
+                    osis_df,
+                    path=['Primary Role','Player'],
+                    values='OSIS',
+                    color='OSIS',
+                    color_continuous_scale='Reds',
+                    title=f'Top OSIS per Player vs {selected_opponent}'
+                )
+                _dark_layout(fig_tree)
+                st.plotly_chart(fig_tree, use_container_width=True)
+
+                # Conclusion & Remarks
+                st.subheader("🔍 Conclusion & Insights")
+                if len(osis_df) > 0:
+                    top_player = osis_df.iloc[0]
+                    least_player = osis_df.iloc[-1]
+                    st.success(
+                        f"🏅 Top Matchup Performer: {top_player['Player']} ({top_player['Primary Role']}) "
+                        f"with an OSIS of {top_player['OSIS']:.2f} against {selected_opponent} in {chosen_format}."
+                    )
+                    st.error(
+                        f"📉 Weakest Matchup Performer: {least_player['Player']} ({least_player['Primary Role']}) "
+                        f"with an OSIS of {least_player['OSIS']:.2f} in {chosen_format}."
+                    )
+
+                    st.markdown("### 📝 Remarks Summary")
+                    summary_counts = osis_df["Remarks"].value_counts().to_dict()
+                    for remark, count in summary_counts.items():
+                        st.markdown(f"- {remark}: {count} player(s)")
+                else:
+                    st.info("No records found for this opponent.")
+
+            # --- Footer ---
+            st.markdown("---")
+            st.markdown("<p style='text-align: right; font-size: 20px; font-weight: bold; color: white;'>~Made By Nihira Khare</p>", unsafe_allow_html=True)
+            st.markdown(
+                """
+                <hr style="margin-top: 50px;"/>
+                <div style='text-align: center; color: gray; font-size: 14px;'>
+                    © 2025 <b>TrueXI</b>. All rights reserved.
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        else:
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            st.error("❌ Missing required columns:\n\n- " + "\n- ".join(missing_cols))
+
+    else:
+        st.info("📁 Please upload a CSV file to proceed with OSIS calculation.")
